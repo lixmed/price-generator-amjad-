@@ -321,33 +321,44 @@ def convert_google_drive_url_for_storage(url):
 def get_gsheet_connection():
     """Cached Google Sheets connection using correct sheet ID and scopes"""
     try:
-        # Use full scopes
+        # Use full scopes (no extra spaces!)
         scopes = [
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
         ]
-        # Load service account with full scopes
-        sa = gspread.service_account(
-            filename="amjad_quotation_service_account.json",
-            scopes=scopes
-        )
-
         
+        # Load service account from Streamlit secrets (NO filename needed)
+        sa = gspread.service_account(scopes=scopes)
+        
+        # Open by spreadsheet ID
         spreadsheet = sa.open_by_key("1iIAwJo2t3LL_2pTLl4QQyTET2tdcnxIRMsVWp-tlPYI")
 
-        # Try to get the "Chair" worksheet
+        # Try to get the worksheet
         try:
             worksheet = spreadsheet.worksheet("Sheet1")
             st.write("✅ Connected to Google Sheet with Sheet1 worksheet!")
             return worksheet
         except gspread.exceptions.WorksheetNotFound:
-            st.error("❌ Spreadsheet not found. Check the ID and sharing.")
-
+            st.error("❌ Worksheet 'Sheet1' not found.")
+            
             # List available worksheets for debugging
             worksheets = spreadsheet.worksheets()
-            st.write(f"Available worksheets: {[ws.title for ws in worksheets]}")
-
+            st.write(f"📋 Available worksheets: {[ws.title for ws in worksheets]}")
             return None
+
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("❌ Spreadsheet not found. Check the ID and sharing.")
+        st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
+        return None
+        
+    except gspread.exceptions.APIError as api_error:
+        st.error(f"❌ Google API Error: {api_error}")
+        st.info("💡 Check if Google Sheets & Drive APIs are enabled in the GCP project.")
+        return None
+        
+    except Exception as e:
+        st.error(f"❌ Unexpected error connecting to Google Sheets: {e}")
+        return None
 
     except gspread.exceptions.SpreadsheetNotFound:
         st.error("❌ Spreadsheet not found. Check the ID and sharing.")
