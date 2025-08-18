@@ -120,7 +120,7 @@ USERS = load_users_from_sheet()
 def get_company_sheet():
     try:
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
-        sh = gc.open("Company Details")
+        sh = gc.open("clients Db")
         return sh.sheet1
     except gspread.SpreadsheetNotFound:
         st.error("❌ Spreadsheet 'Company Details' not found.")
@@ -1613,4 +1613,5 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
+
 
