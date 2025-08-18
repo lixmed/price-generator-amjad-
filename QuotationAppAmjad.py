@@ -65,7 +65,7 @@ def load_users_from_sheet():
     try:
         # ✅ Use local JSON key file (NO secrets.toml)
         # Make sure 'amjad_quotation_service_account.json' is in your app folder
-        gc = gspread.service_account(filename="amjad_quotation_service_account.json")
+        gc = gspread.service_account()
         # 🔓 Open by spreadsheet name (must be shared with service account email)
         sh = gc.open("Amjad's users")  # ← Spreadsheet name
         worksheet = sh.sheet1  # Assumes user data is in first sheet
@@ -126,7 +126,7 @@ USERS = load_users_from_sheet()
 def get_company_sheet():
     """Connect to 'Company Details' Google Sheet"""
     try:
-        gc = gspread.service_account(filename="amjad_quotation_service_account.json")
+        gc = gspread.service_account()
         # Open by spreadsheet ID
         sh = gc.open_by_key("197vIetxMbuJ1qLtFfUWPJwxK5TAOT0YPQe73PyBmoYs")
         return sh.sheet1  # Assumes data is in first worksheet
@@ -214,7 +214,7 @@ def save_company_to_sheet(sheet, company_data):
 def get_history_sheet():
     """Connect to 'Amjad's history' Google Sheet"""
     try:
-        gc = gspread.service_account(filename="amjad_quotation_service_account.json")
+        gc = gspread.service_account()
         sh = gc.open("Amjad's history")  # ← Spreadsheet name
         return sh.sheet1
     except gspread.SpreadsheetNotFound:
@@ -1611,4 +1611,5 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 file_name=pdf_filename,
                 mime="application/pdf",
                 key=f"download_pdf_{data_hash}"
+
             )
