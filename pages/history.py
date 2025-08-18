@@ -48,7 +48,7 @@ if 'history' not in st.session_state:
 def get_history_sheet():
     """Connect to 'Amjad's history' Google Sheet"""
     try:
-        gc = gspread.service_account(filename="amjad_quotation_service_account.json")
+        gc = gspread.service_account()
         sh = gc.open("Amjad's history")  # ← Spreadsheet name
         return sh.sheet1
     except gspread.SpreadsheetNotFound:
@@ -552,3 +552,4 @@ else:
                     st.success("🔄 Loading quotation into editor...")
                     time.sleep(1)
                     st.switch_page("QuotationAppAmjad.py")
+
