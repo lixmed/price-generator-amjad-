@@ -63,9 +63,7 @@ init_session_state()
 def load_users_from_sheet():
     """Load user credentials from Google Sheet by name (not ID)"""
     try:
-        # ✅ Use local JSON key file (NO secrets.toml)
-        # Make sure 'amjad_quotation_service_account.json' is in your app folder
-        gc = gspread.service_account()
+        gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
         # 🔓 Open by spreadsheet name (must be shared with service account email)
         sh = gc.open("Amjad's users")  # ← Spreadsheet name
         worksheet = sh.sheet1  # Assumes user data is in first sheet
@@ -110,10 +108,6 @@ def load_users_from_sheet():
         - The service account has Editor access
         """)
         st.stop()
-    except FileNotFoundError:
-        st.error("❌ Service account file not found.")
-        st.info("💡 Make sure amjad_quotation_service_account.json is in your app folder.")
-        st.stop()
     except Exception as e:
         st.error(f"❌ Unexpected error loading users: {e}")
         st.stop()
@@ -124,15 +118,13 @@ USERS = load_users_from_sheet()
 
 @st.cache_resource
 def get_company_sheet():
-    """Connect to 'Company Details' Google Sheet"""
     try:
-        gc = gspread.service_account()
-        # Open by spreadsheet ID
-        sh = gc.open_by_key("197vIetxMbuJ1qLtFfUWPJwxK5TAOT0YPQe73PyBmoYs")
-        return sh.sheet1  # Assumes data is in first worksheet
+        gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
+        sh = gc.open("Company Details")
+        return sh.sheet1
     except gspread.SpreadsheetNotFound:
-        st.error("❌ Company Details spreadsheet not found.")
-        st.info("💡 Make sure the sheet ID is correct and shared with the service account.")
+        st.error("❌ Spreadsheet 'Company Details' not found.")
+        st.info("💡 Make sure the sheet is shared with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
         return None
     except Exception as e:
         st.error(f"❌ Failed to connect to company sheet: {e}")
@@ -214,7 +206,7 @@ def save_company_to_sheet(sheet, company_data):
 def get_history_sheet():
     """Connect to 'Amjad's history' Google Sheet"""
     try:
-        gc = gspread.service_account()
+        gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
         sh = gc.open("Amjad's history")  # ← Spreadsheet name
         return sh.sheet1
     except gspread.SpreadsheetNotFound:
@@ -328,7 +320,7 @@ def get_gsheet_connection():
         ]
         
         # Load service account from Streamlit secrets (NO filename needed)
-        sa = gspread.service_account(scopes=scopes)
+        sa = gspread.service_account_from_dict(st.secrets["gcp_service_account"], scopes=scopes)
         
         # Open by spreadsheet ID
         spreadsheet = sa.open_by_key("1iIAwJo2t3LL_2pTLl4QQyTET2tdcnxIRMsVWp-tlPYI")
@@ -367,9 +359,6 @@ def get_gsheet_connection():
     except gspread.exceptions.APIError as api_error:
         st.error(f"❌ Google API Error: {api_error}")
         st.info("💡 Check if Google Sheets & Drive APIs are enabled.")
-        return None
-    except FileNotFoundError:
-        st.error("❌ Service account file not found. Make sure amjad_quotation_service_account.json is in the app folder.")
         return None
     except Exception as e:
         st.error(f"❌ Unexpected error: {e}")
@@ -1624,3 +1613,4 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
+
