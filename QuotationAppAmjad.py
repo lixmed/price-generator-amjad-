@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import gspread
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from pathlib import Path
-
+from bs4 import BeautifulSoup
 
 # ========== Page Config ==========
 st.set_page_config(page_title="Quotation Builder", page_icon="🪑", layout="wide")
@@ -204,12 +204,20 @@ def save_company_to_sheet(sheet, company_data):
 # ========== Connect to Quotation History Sheet ==========
 @st.cache_resource
 def get_history_sheet():
-    """Connect to 'Amjad's history' Google Sheet"""
+    # Cache the connection to the history Google Sheet
+    # Returns the first worksheet of "Amjad's history" spreadsheet
     try:
+        # Create service account connection using credentials from secrets
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
+        
+        # Open the history spreadsheet by name
         sh = gc.open("Amjad's history")  # ← Spreadsheet name
+        
+        # Return the first worksheet
         return sh.sheet1
+        
     except gspread.SpreadsheetNotFound:
+        # Handle case where spreadsheet is not found
         st.error("❌ Spreadsheet 'Amjad's history' not found.")
         st.info("💡 Make sure:")
         st.markdown("""
@@ -218,10 +226,12 @@ def get_history_sheet():
         - The service account has Editor access
         """)
         return None
+        
     except Exception as e:
+        # Handle any other errors that occur
         st.error(f"❌ Failed to connect to history sheet: {e}")
         return None
-
+        
 # ========== Load User History ==========
 def load_user_history(user_email, sheet):
     """Load user's quotation history from Google Sheet"""
@@ -309,97 +319,97 @@ def convert_google_drive_url_for_storage(url):
 
 # ========== Google Sheets Connection ==========
 
-@st.cache_resource
-def get_gsheet_connection():
-    """Cached Google Sheets connection using correct sheet ID and scopes"""
-    try:
-        # Use full scopes (no extra spaces!)
-        scopes = [
-            'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive'
-        ]
+# @st.cache_resource
+# def get_gsheet_connection():
+#     """Cached Google Sheets connection using correct sheet ID and scopes"""
+#     try:
+#         # Use full scopes (no extra spaces!)
+#         scopes = [
+#             'https://www.googleapis.com/auth/spreadsheets',
+#             'https://www.googleapis.com/auth/drive'
+#         ]
         
-        # Load service account from Streamlit secrets (NO filename needed)
-        sa = gspread.service_account_from_dict(st.secrets["gcp_service_account"], scopes=scopes)
+#         # Load service account from Streamlit secrets (NO filename needed)
+#         sa = gspread.service_account_from_dict(st.secrets["gcp_service_account"], scopes=scopes)
         
-        # Open by spreadsheet ID
-        spreadsheet = sa.open_by_key("1iIAwJo2t3LL_2pTLl4QQyTET2tdcnxIRMsVWp-tlPYI")
+#         # Open by spreadsheet ID
+#         spreadsheet = sa.open_by_key("1iIAwJo2t3LL_2pTLl4QQyTET2tdcnxIRMsVWp-tlPYI")
 
-        # Try to get the worksheet
-        try:
-            worksheet = spreadsheet.worksheet("Sheet1")
-            st.write("✅ Connected to Google Sheet with Sheet1 worksheet!")
-            return worksheet
-        except gspread.exceptions.WorksheetNotFound:
-            st.error("❌ Worksheet 'Sheet1' not found.")
+#         # Try to get the worksheet
+#         try:
+#             worksheet = spreadsheet.worksheet("Sheet1")
+#             st.write("✅ Connected to Google Sheet with Sheet1 worksheet!")
+#             return worksheet
+#         except gspread.exceptions.WorksheetNotFound:
+#             st.error("❌ Worksheet 'Sheet1' not found.")
             
-            # List available worksheets for debugging
-            worksheets = spreadsheet.worksheets()
-            st.write(f"📋 Available worksheets: {[ws.title for ws in worksheets]}")
-            return None
+#             # List available worksheets for debugging
+#             worksheets = spreadsheet.worksheets()
+#             st.write(f"📋 Available worksheets: {[ws.title for ws in worksheets]}")
+#             return None
 
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error("❌ Spreadsheet not found. Check the ID and sharing.")
-        st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
-        return None
+#     except gspread.exceptions.SpreadsheetNotFound:
+#         st.error("❌ Spreadsheet not found. Check the ID and sharing.")
+#         st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
+#         return None
         
-    except gspread.exceptions.APIError as api_error:
-        st.error(f"❌ Google API Error: {api_error}")
-        st.info("💡 Check if Google Sheets & Drive APIs are enabled in the GCP project.")
-        return None
+#     except gspread.exceptions.APIError as api_error:
+#         st.error(f"❌ Google API Error: {api_error}")
+#         st.info("💡 Check if Google Sheets & Drive APIs are enabled in the GCP project.")
+#         return None
         
-    except Exception as e:
-        st.error(f"❌ Unexpected error connecting to Google Sheets: {e}")
-        return None
+#     except Exception as e:
+#         st.error(f"❌ Unexpected error connecting to Google Sheets: {e}")
+#         return None
 
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error("❌ Spreadsheet not found. Check the ID and sharing.")
-        st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
-        return None
-    except gspread.exceptions.APIError as api_error:
-        st.error(f"❌ Google API Error: {api_error}")
-        st.info("💡 Check if Google Sheets & Drive APIs are enabled.")
-        return None
-    except Exception as e:
-        st.error(f"❌ Unexpected error: {e}")
-        return None
+#     except gspread.exceptions.SpreadsheetNotFound:
+#         st.error("❌ Spreadsheet not found. Check the ID and sharing.")
+#         st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
+#         return None
+#     except gspread.exceptions.APIError as api_error:
+#         st.error(f"❌ Google API Error: {api_error}")
+#         st.info("💡 Check if Google Sheets & Drive APIs are enabled.")
+#         return None
+#     except Exception as e:
+#         st.error(f"❌ Unexpected error: {e}")
+#         return None
 
         
-@st.cache_data(ttl=300)
-def get_sheet_data(_sheet):
-    """Fetch and process sheet data with caching"""
+# @st.cache_data(ttl=300)
+# def get_sheet_data(_sheet):
+#     """Fetch and process sheet data with caching"""
 
-    if _sheet is None:
-        return None
-    try:
+#     if _sheet is None:
+#         return None
+#     try:
        
-        df = get_as_dataframe(
-            _sheet,
-            header=0,              
-            skip_blank_rows=True,
-            evaluate_formulas=True
-        )
+#         df = get_as_dataframe(
+#             _sheet,
+#             header=0,              
+#             skip_blank_rows=True,
+#             evaluate_formulas=True
+#         )
 
-        df.dropna(how='all', inplace=True)
+#         df.dropna(how='all', inplace=True)
 
       
-        if df.empty:
-            st.error("❌ ")
-            return pd.DataFrame()
+#         if df.empty:
+#             st.error("❌ ")
+#             return pd.DataFrame()
 
    
-        if 'Unit Price' in df.columns:
-            df['Unit Price'] = df['Unit Price'].astype(str).str.replace("SAR|EGP|$", "", regex=True).str.replace(",", "").str.strip()
-            df['Unit Price'] = pd.to_numeric(df['Unit Price'], errors='coerce').fillna(0.0)
+#         if 'Unit Price' in df.columns:
+#             df['Unit Price'] = df['Unit Price'].astype(str).str.replace("SAR|EGP|$", "", regex=True).str.replace(",", "").str.strip()
+#             df['Unit Price'] = pd.to_numeric(df['Unit Price'], errors='coerce').fillna(0.0)
 
-        if 'Image Featured' in df.columns:
-            df['Image Featured'] = df['Image Featured'].apply(convert_google_drive_url_for_storage)
+#         if 'Image Featured' in df.columns:
+#             df['Image Featured'] = df['Image Featured'].apply(convert_google_drive_url_for_storage)
 
-        return df
+#         return df
 
-    except Exception as e:
-        st.error(f"❌{e}")
-        return None
+#     except Exception as e:
+#         st.error(f"❌{e}")
+#         return None
 
 def load_user_history_from_sheet(user_email, sheet):
     """Load user's quotation history from Google Sheet"""
@@ -452,7 +462,7 @@ def display_product_image(c2, prod, image_url, width=100):
             try:
                 img_bytes = fetch_image_bytes(img_url)
                 img = PILImage.open(BytesIO(img_bytes))
-                st.image(img, caption=prod, use_column_width=True)
+                st.image(img, caption=prod, use_container_width=True)
             except Exception as e:
                 st.error("❌ Image Error")
                 st.caption(str(e))
@@ -543,16 +553,120 @@ if st.button("🔄 Refresh Sheet Data"):
     st.cache_resource.clear()
     st.rerun()
 
-# ========== Get Sheet Data ==========
-sheet = get_gsheet_connection()
-if sheet is None:
-    st.error("Cannot connect to Google Sheets")
+@st.cache_resource
+def get_wordpress_products():
+    """Fetch all published products from WordPress/WooCommerce REST API"""
+    try:
+        wp_url = st.secrets["wordpress"]["url"]
+        consumer_key = st.secrets["wordpress"]["consumer_key"]
+        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
+        
+        api_url = f"{wp_url}/wp-json/wc/v3/products"
+        all_products = []
+        page = 1
+        
+        st.write("📡 Fetching products from WordPress...")
+        
+        while True:
+            response = requests.get(
+                api_url,
+                auth=(consumer_key, consumer_secret),
+                params={"page": page, "per_page": 100, "status": "publish"},
+                timeout=10
+            )
+            
+            if response.status_code == 401:
+                st.error("❌ Unauthorized: Invalid WordPress credentials")
+                return None
+            elif response.status_code == 404:
+                st.error("❌ WooCommerce REST API not found. Is WooCommerce active?")
+                return None
+            elif response.status_code != 200:
+                st.error(f"❌ API Error: {response.status_code} - {response.text}")
+                return None
+
+            products = response.json()
+            if not products:
+                break
+            
+            all_products.extend(products)
+            page += 1
+            
+            if len(products) < 100:
+                break
+        
+        st.success(f"✅ Loaded {len(all_products)} products from WordPress")
+        return all_products
+    except Exception as e:
+        st.error(f"❌ Failed to connect to WordPress: {e}")
+        return None
+
+@st.cache_data(ttl=300)
+def get_product_dataframe(products):
+    """Convert WooCommerce products to DataFrame with fallbacks for missing data"""
+    if not products:
+        return None
+    
+    data = []
+    for p in products:
+        title = p["name"] if p["name"] else "Unnamed Product"
+        
+        try:
+            price = float(p["price"]) if p["price"] and str(p["price"]).strip() not in ["", "0"] else 0.0
+        except (ValueError, TypeError):
+            price = 0.0
+        
+        sku = p["sku"] if p["sku"] else ""
+        image_url = p["images"][0]["src"] if p["images"] else ""
+        
+        raw_desc = p["description"] or p["short_description"] or ""
+        content = BeautifulSoup(raw_desc, "html.parser").get_text().strip() if raw_desc else ""
+        
+        color = ""
+        size = ""
+        if content:
+            color_match = re.search(r'Color:\s*([^\n<]+)', content, re.IGNORECASE)
+            size_match = re.search(r'Size:\s*([^\n<]+)', content, re.IGNORECASE)
+            if color_match:
+                color = color_match.group(1).strip()
+                content = re.sub(r'Color:[^<\n]*', '', content)
+            if size_match:
+                size = size_match.group(1).replace('*', 'x').strip()
+                content = re.sub(r'Size:[^<\n]*', '', content)
+        
+        for attr in p.get("attributes", []):
+            attr_name = attr["name"].strip().lower()
+            attr_value = ", ".join(attr["options"]) if attr["options"] else ""
+            if "color" in attr_name:
+                color = attr_value
+            elif "size" in attr_name or "dimension" in attr_name:
+                size = attr_value
+        
+        color = color or ""
+        size = size or ""
+        content = re.sub(r'\s+', ' ', content).strip()
+        
+        data.append({
+            "Title": title,
+            "Unit Price": price,
+            "Content": content,
+            "Color": color,
+            "Size (mm)": size,
+            "Image Featured": image_url,
+            "SKU": sku
+        })
+    
+    df = pd.DataFrame(data)
+    return df
+
+# 🚀 Load products from WordPress
+products = get_wordpress_products()
+if products is None:
     st.stop()
 
-# Get cached data
-df = get_sheet_data(sheet)
-if df is None:
-    st.error("Cannot load sheet data")
+df = get_product_dataframe(products)
+if df is None or df.empty:
+    st.error("❌ No product data loaded from WordPress")
     st.stop()
 
 # Validate required columns
@@ -1613,7 +1727,6 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
-
 
 
 
