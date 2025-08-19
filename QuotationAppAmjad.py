@@ -752,7 +752,7 @@ if st.session_state.get('form_submitted', False):
     st.subheader("Choose an option:")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("✏️ Edit Company Info"):
+        if st.button("✏️ Edit Company Info", use_container_width=True):
             st.session_state.form_submitted = False
             # Preserve the current company name in session state
             current_company_name = st.session_state.company_details.get("company_name", "")
@@ -1613,5 +1613,6 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
+
 
 
