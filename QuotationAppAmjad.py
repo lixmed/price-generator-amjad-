@@ -991,7 +991,7 @@ if not st.session_state.form_submitted:
                 st.error("❌ Invalid email format.")
             elif not re.match(phone_pattern, contact_phone):
                 st.error("❌ Invalid phone number.")
-            elif not all([company_name, contact_person, contact_email, contact_phone]):
+            elif not all([company_name, contact_person]):
                 st.warning("⚠ Please fill in all required fields.")
             else:
                 # Save to session state
@@ -1799,6 +1799,7 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
+
 
 
 
