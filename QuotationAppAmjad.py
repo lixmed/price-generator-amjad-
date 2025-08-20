@@ -6,10 +6,14 @@ import hashlib
 import requests
 from io import BytesIO
 from PIL import Image as PILImage
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph, Image as RLImage
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph, 
+    Image as RLImage, KeepInFrame, PageBreak
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A3
 from reportlab.lib import colors
+from reportlab.lib.units import inch
 import tempfile
 import os
 from datetime import datetime, timedelta
@@ -462,7 +466,7 @@ def display_product_image(c2, prod, image_url, width=100):
             try:
                 img_bytes = fetch_image_bytes(img_url)
                 img = PILImage.open(BytesIO(img_bytes))
-                st.image(img, caption=prod, use_column_width=True)
+                st.image(img, caption=prod, use_container_width=True)
             except Exception as e:
                 st.error("❌ Image Error")
                 st.caption(str(e))
@@ -617,7 +621,9 @@ def get_product_dataframe(products):
             price = 0.0
         
         sku = p["sku"] if p["sku"] else ""
-        image_url = p["images"][0]["src"] if p["images"] else ""
+        # Get all image URLs, joined by pipe "|"
+        image_urls = [img["src"] for img in p["images"]] if p["images"] else []
+        image_url = "|".join(image_urls)  # Store multiple URLs
         
         raw_desc = p["description"] or p["short_description"] or ""
         content = BeautifulSoup(raw_desc, "html.parser").get_text().strip() if raw_desc else ""
@@ -1166,10 +1172,13 @@ for idx in st.session_state.row_indices:
         c4.write(f"{unit_price:.2f} SAR")
         c7.write(f"{line_total:.2f} SAR")
 
+        # Store original image URLs (all of them) separated by |
+        original_image_urls = df.loc[df["Title"] == prod, "Image Featured"].values[0] if not df[df["Title"] == prod].empty else ""
+
         output_data.append({
             "Item": prod,
             "Description": desc_map.get(prod, ""),
-            "Image": convert_google_drive_url_for_display(image_url) if image_url else "",
+            "Image": original_image_urls,  # Keep raw URLs for PDF
             "Quantity": qty,
             "Price per item": unit_price,
             "Discount %": valid_discount,
@@ -1245,18 +1254,6 @@ def download_image_for_pdf(url, max_size=(300, 300)):
     except Exception as e:
         print(f"Image download/resize failed: {e}")
         return None
-
-from reportlab.lib.pagesizes import A3
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage, KeepInFrame, PageBreak
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from PIL import Image as PILImage
-import tempfile
-import os
-import hashlib
-from io import BytesIO
-import requests
 
 @st.cache_data
 def build_pdf_cached(data_hash, final_total, company_details,
@@ -1360,23 +1357,33 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # ======================
         # Company Details
         # ======================
-        details = f"""
-        <para align="left">
-            <font size=14>
-                <b><font color="maroon">Quotation To:</font></b><br/>
-                <b><font color="maroon">Company:</font></b> {company_details.get('company_name', '')}<br/>
-                <b><font color="maroon">Contact Person:</font></b> {company_details.get('contact_person', '')}<br/>
-                <b><font color="maroon">Email:</font></b> {company_details.get('contact_email', '')}<br/>
-                <b><font color="maroon">Phone:</font></b> {company_details.get('contact_phone', '')}<br/>
-                <b><font color="maroon">Address:</font></b> {company_details.get('address', 'N/A')}<br/><br/>
-                
-                <b><font color="black">Prepared By:</font></b> {company_details.get('prepared_by', '')}<br/>
-                <b><font color="black">Prepared Email:</font></b> {company_details.get('prepared_by_email', '')}<br/>
-                <b><font color="black">Date:</font></b> {company_details.get('current_date', '')}<br/>
-                <b><font color="black">Valid Till:</font></b> {company_details.get('valid_till', '')}
-            </font>
-        </para>
-        """
+        # Build company details dynamically
+        company_lines = [
+            "<b><font color=\"maroon\">Quotation To:</font></b>"
+        ]
+
+        # Always required
+        company_lines.append(f"<b><font color=\"maroon\">Company:</font></b> {company_details.get('company_name', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Contact Person:</font></b> {company_details.get('contact_person', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Email:</font></b> {company_details.get('contact_email', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Phone:</font></b> {company_details.get('contact_phone', '')}")
+
+        # Only show Address if not empty
+        address = company_details.get('address', '').strip()
+        if address:
+            company_lines.append(f"<b><font color=\"maroon\">Address:</font></b> {address}")
+
+        # Add spacing
+        company_lines.append("")
+
+        # Prepared by section
+        company_lines.append(f"<b><font color=\"black\">Prepared By:</font></b> {company_details.get('prepared_by', '')}")
+        company_lines.append(f"<b><font color=\"black\">Prepared Email:</font></b> {company_details.get('prepared_by_email', '')}")
+        company_lines.append(f"<b><font color=\"black\">Date:</font></b> {company_details.get('current_date', '')}")
+        company_lines.append(f"<b><font color=\"black\">Valid Till:</font></b> {company_details.get('valid_till', '')}")
+
+        # Join all lines
+        details = "<para align=\"left\"><font size=14>" + "<br/>".join(company_lines) + "</font></para>"
         elems.append(Paragraph(details, aligned_style))
 
         # ======================
@@ -1388,7 +1395,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
                 img = RLImage(terms_img_path)
                 img._restrictSize(doc.width, 80)  # As in original
                 img.hAlign = 'CENTER'
-                elems.append(Spacer(1, 40))
+                elems.append(Spacer(1, 45))
                 elems.append(img)
             except Exception as e:
                 print(f"Error adding terms.png: {e}")
@@ -1416,26 +1423,79 @@ def build_pdf_cached(data_hash, final_total, company_details,
 
         # Original total: 30 + 170 + 90 + 80 + 220 + 30 + 60 + 60 = 730
         # Remove "Color" (80) → redistribute: Image +50 → 220, Description +30 → 250
-        col_widths = [30, 220, 90, 250, 30, 60, 60]  # Sum = 730 pt
+        col_widths = [30, 320, 90, 150, 30, 60, 60]  # Sum = 730 pt
         total_table_width = sum(col_widths)
 
         for idx, r in enumerate(data, start=1):
-            img_element = "No Image"
-            if r.get("Image"):
-                try:
-                    download_url = convert_google_drive_url_for_storage(r["Image"])
-                    temp_img_path = download_image_for_pdf(download_url, max_size=(300, 300))
-                    if temp_img_path:
-                        img = RLImage(temp_img_path)
-                        img.drawWidth = 210
-                        img.drawHeight = 180
-                        img.hAlign = 'CENTER'
-                        img.vAlign = 'MIDDLE'
-                        img_element = KeepInFrame(220, 190, [img], mode='shrink')
-                        temp_files.append(temp_img_path)
-                except Exception as e:
-                    print(f"Error loading image: {e}")
-                    img_element = Paragraph("No Image", ParagraphStyle('NoImage', alignment=1))
+            # Get all image URLs (comma-separated in session state)
+            image_urls = r.get("Image", "")
+            image_paths = []
+
+            # Process multiple images (if available)
+            if image_urls:
+                # Split by pipe character (used as separator in session state)
+                urls = [url.strip() for url in image_urls.split("|") if url.strip()]
+                
+                for url in urls[:2]:  # Only take up to 2 images
+                    try:
+                        download_url = convert_google_drive_url_for_storage(url)
+                        temp_img_path = download_image_for_pdf(download_url, max_size=(300, 300))
+                        if temp_img_path:
+                            image_paths.append(temp_img_path)
+                            temp_files.append(temp_img_path)
+                    except Exception as e:
+                        print(f"Error loading image: {e}")
+
+            # Create image element
+            if image_paths:
+                # Define image dimensions
+                total_img_width = 310  # Leave 5pt padding on each side
+                num_images = min(2, len(image_paths))
+                img_width = (total_img_width - 10) / num_images  # 10pt gap between images
+                img_height = 140  # Good height for A3 row
+
+                # Create image objects
+                img_flowables = []
+                for path in image_paths[:2]:
+                    img = RLImage(path)
+                    img.drawWidth = img_width
+                    img.drawHeight = img_height
+                    img.hAlign = 'CENTER'
+                    img.vAlign = 'MIDDLE'
+                    img_flowables.append(img)
+
+                # If only one image, center it
+                if len(img_flowables) == 1:
+                    img_table = Table(
+                        [[img_flowables[0]]],
+                        colWidths=[total_img_width],
+                        hAlign='CENTER'
+                    )
+                else:  # Two images
+                    img_table = Table(
+                        [img_flowables],  # Single row with two images
+                        colWidths=[img_width, img_width],
+                        hAlign='CENTER',
+                        spaceAfter=0
+                    )
+
+                # Style the table (no borders, centered)
+                img_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 0),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                ]))
+
+                # Wrap in KeepInFrame to prevent overflow
+                img_element = KeepInFrame(320, 150, [img_table], mode='shrink')
+            else:
+                img_element = Paragraph("No Image", ParagraphStyle('NoImage', 
+                    alignment=1, 
+                    fontSize=10, 
+                    textColor=colors.grey))
 
             # Build rich description with bold labels
             desc = r.get('Description', '').strip()
@@ -1457,9 +1517,9 @@ def build_pdf_cached(data_hash, final_total, company_details,
             # Adjust the description style for better wrapping
             desc_style = ParagraphStyle(
                 'Desc', 
-                fontSize=10, 
-                leading=14,  # Slightly reduced line spacing
-                alignment=0,  # Left alignment
+                fontSize=11, 
+                leading=15,  # Slightly reduced line spacing
+                alignment=1,  # center alignment
                 wordWrap='CJK'  # Better word wrapping
             )
             desc_para = Paragraph(full_desc, desc_style)
@@ -1483,16 +1543,25 @@ def build_pdf_cached(data_hash, final_total, company_details,
             rowHeights=[25] + [190] * (len(product_table_data) - 1)
         )
         product_table.setStyle(TableStyle([
+            # Header row
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 11),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TOPPADDING', (0, 0), (-1, 0), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),           # Center header text
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),          # Vertically center header
+            ('TOPPADDING', (0, 0), (-1, 0), 9),            # Add padding for visual centering
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+
+            # Body rows
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 1), (-1, -1), 'CENTER'),          # Center all cell content
+            ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),         # Vertical center
+            ('TOPPADDING', (0, 1), (-1, -1), 8),            # Better vertical spacing
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+
+            # Grid
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
         elems.append(product_table)
@@ -1521,6 +1590,9 @@ def build_pdf_cached(data_hash, final_total, company_details,
             ('FONTNAME', (0, 0), (-1, -2), 'Helvetica'),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 12),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),         # Vertical center
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
             ('GRID', (0, 0), (-1, -1), 1.0, colors.black),
             ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
             ('TEXTCOLOR', (1, 1), (1, 1), colors.red) if discount_amount > 0 else ('TEXTCOLOR', (1, 1), (1, 1), colors.black),
@@ -1727,7 +1799,6 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
-
 
 
 
