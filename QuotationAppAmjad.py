@@ -980,28 +980,44 @@ if not st.session_state.form_submitted:
         valid_till = (datetime.now() + timedelta(days=10)).strftime("%A, %B %d, %Y")
         quotation_validity = "30 days"
 
-        # Validation
+        # Validation patterns
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         phone_pattern = r'^\+?\d+$'
 
         submit = st.form_submit_button("Submit Details")
-
         if submit:
-            if not re.match(email_pattern, contact_email):
-                st.error("❌ Invalid email format.")
-            elif not re.match(phone_pattern, contact_phone):
-                st.error("❌ Invalid phone number.")
-            elif not all([company_name, contact_person]):
-                st.warning("⚠ Please fill in all required fields.")
+            # Required fields (only Company and Contact Person)
+            if not company_name:
+                st.warning("⚠ Please enter the Company Name.")
+            elif not contact_person:
+                st.warning("⚠ Please enter the Contact Person.")
             else:
-                # Save to session state
+                # Validate phone only if provided
+                if contact_phone.strip():
+                    if not re.match(phone_pattern, contact_phone.strip()):
+                        st.error("❌ Invalid phone number format.")
+                    else:
+                        # Clean phone number for storage
+                        try:
+                            num = float(contact_phone.strip())
+                            contact_phone = str(int(num)) if num.is_integer() else str(num)
+                        except (ValueError, TypeError):
+                            contact_phone = contact_phone.strip()
+
+                # Validate email only if provided
+                if contact_email.strip():
+                    if not re.match(email_pattern, contact_email.strip()):
+                        st.error("❌ Invalid email format.")
+                        st.stop()  # Stop if email is invalid
+
+                # All validations passed
                 st.session_state.form_submitted = True
                 st.session_state.company_details = {
-                    "company_name": company_name,
-                    "contact_person": contact_person,
-                    "contact_email": contact_email,
-                    "contact_phone": contact_phone,
-                    "address": address,
+                    "company_name": company_name.strip(),
+                    "contact_person": contact_person.strip(),
+                    "contact_email": contact_email.strip(),
+                    "contact_phone": contact_phone.strip(),
+                    "address": address.strip(),
                     "prepared_by": prepared_by,
                     "prepared_by_email": prepared_by_email,
                     "current_date": current_date,
@@ -1011,13 +1027,10 @@ if not st.session_state.form_submitted:
 
                 # Save to Google Sheet only if it's a new company or edited
                 if selected_company == "-- Create New --" or selected_company != company_name:
-                    save_company_to_sheet(
-                        company_sheet,
-                        st.session_state.company_details
-                    )
+                    save_company_to_sheet(company_sheet, st.session_state.company_details)
                 else:
                     st.info(f"ℹ '{company_name}' data updated in session.")
-
+                
                 st.rerun()
     
     st.stop()  
@@ -1799,7 +1812,6 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
-
 
 
 
