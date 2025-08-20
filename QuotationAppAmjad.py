@@ -951,19 +951,23 @@ if not st.session_state.form_submitted:
     with st.form(key="company_details_form"):
         company_name = st.text_input(
             "Company Name",
-            value=selected_data.get("company_name", "")
+            value=selected_data.get("company_name", ""),
+            placeholder="Enter Company Name (mandatory)"
         )
         contact_person = st.text_input(
             "Contact Person",
-            value=selected_data.get("contact_person", "")
+            value=selected_data.get("contact_person", ""),
+            placeholder="Enter contact person (mandatory)"
         )
         contact_email = st.text_input(
             "Contact Email",
-            value=selected_data.get("contact_email", "")
+            value=selected_data.get("contact_email", ""),
+            placeholder="Enter contact email (optional)"
         )
         contact_phone = st.text_input(
             "Contact Cell Phone",
-            value=selected_data.get("contact_phone", "")
+            value=selected_data.get("contact_phone", ""),
+            placeholder="Enter contact cell phone (optional)"
         )
         address = st.text_area(
             "Address (Optional)",
@@ -1279,6 +1283,8 @@ def build_pdf_cached(data_hash, final_total, company_details,
     - All other styling and layout preserved
     """
     
+    USE_TWO_IMAGES = False 
+
     def build_pdf(data, total, company_details, hdr_path, ftr_path):
         # Ensure data exists
         if not data:
@@ -1436,7 +1442,8 @@ def build_pdf_cached(data_hash, final_total, company_details,
 
         # Original total: 30 + 170 + 90 + 80 + 220 + 30 + 60 + 60 = 730
         # Remove "Color" (80) → redistribute: Image +50 → 220, Description +30 → 250
-        col_widths = [30, 320, 90, 150, 30, 60, 60]  # Sum = 730 pt
+        col_widths = [30, 220, 90, 250, 30, 60, 60]   # better for one pic 
+        #col_widths = [30, 320, 90, 150, 30, 60, 60]  # Sum = 730 pt / Use this when you need two pics 
         total_table_width = sum(col_widths)
 
         for idx, r in enumerate(data, start=1):
@@ -1449,7 +1456,8 @@ def build_pdf_cached(data_hash, final_total, company_details,
                 # Split by pipe character (used as separator in session state)
                 urls = [url.strip() for url in image_urls.split("|") if url.strip()]
                 
-                for url in urls[:2]:  # Only take up to 2 images
+                max_images = 2 if USE_TWO_IMAGES else 1
+                for url in urls[:max_images]:  # Use 1 or 2 based on toggle 
                     try:
                         download_url = convert_google_drive_url_for_storage(url)
                         temp_img_path = download_image_for_pdf(download_url, max_size=(300, 300))
@@ -1462,10 +1470,10 @@ def build_pdf_cached(data_hash, final_total, company_details,
             # Create image element
             if image_paths:
                 # Define image dimensions
-                total_img_width = 310  # Leave 5pt padding on each side
-                num_images = min(2, len(image_paths))
+                total_img_width = 220  # Leave 5pt padding on each side / edit this if you wanted another image 
+                num_images = min(2 if USE_TWO_IMAGES else 1, len(image_paths))
                 img_width = (total_img_width - 10) / num_images  # 10pt gap between images
-                img_height = 140  # Good height for A3 row
+                img_height = 160  # Good height for A3 row
 
                 # Create image objects
                 img_flowables = []
@@ -1503,7 +1511,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
                 ]))
 
                 # Wrap in KeepInFrame to prevent overflow
-                img_element = KeepInFrame(320, 150, [img_table], mode='shrink')
+                img_element = KeepInFrame(250, 190, [img_table], mode='shrink')
             else:
                 img_element = Paragraph("No Image", ParagraphStyle('NoImage', 
                     alignment=1, 
