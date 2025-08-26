@@ -466,7 +466,7 @@ def display_product_image(c2, prod, image_url, width=100):
             try:
                 img_bytes = fetch_image_bytes(img_url)
                 img = PILImage.open(BytesIO(img_bytes))
-                st.image(img, caption=prod, use_column_width=True)
+                st.image(img, caption=prod, use_container_width=True)
             except Exception as e:
                 st.error("❌ Image Error")
                 st.caption(str(e))
@@ -557,20 +557,17 @@ if st.button("🔄 Refresh Sheet Data"):
     st.cache_resource.clear()
     st.rerun()
 
-@st.cache_resource
+@st.cache_data(ttl=300)
 def get_wordpress_products():
     """Fetch all published products from WordPress/WooCommerce REST API"""
     try:
         wp_url = st.secrets["wordpress"]["url"]
         consumer_key = st.secrets["wordpress"]["consumer_key"]
         consumer_secret = st.secrets["wordpress"]["consumer_secret"]
-        
         api_url = f"{wp_url}/wp-json/wc/v3/products"
         all_products = []
         page = 1
-        
         st.write("📡 Fetching products from WordPress...")
-        
         while True:
             response = requests.get(
                 api_url,
@@ -578,7 +575,6 @@ def get_wordpress_products():
                 params={"page": page, "per_page": 100, "status": "publish"},
                 timeout=10
             )
-            
             if response.status_code == 401:
                 st.error("❌ Unauthorized: Invalid WordPress credentials")
                 return None
@@ -588,19 +584,16 @@ def get_wordpress_products():
             elif response.status_code != 200:
                 st.error(f"❌ API Error: {response.status_code} - {response.text}")
                 return None
-
             products = response.json()
             if not products:
                 break
-            
             all_products.extend(products)
             page += 1
-            
             if len(products) < 100:
                 break
-        
+
         st.success(f"✅ Loaded {len(all_products)} products from WordPress")
-        return all_products
+        return all_products  # This now includes 'id', 'name', etc.
     except Exception as e:
         st.error(f"❌ Failed to connect to WordPress: {e}")
         return None
@@ -665,21 +658,119 @@ def get_product_dataframe(products):
     df = pd.DataFrame(data)
     return df
 
-# 🚀 Load products from WordPress
-products = get_wordpress_products()
-if products is None:
-    st.stop()
+@st.cache_data(ttl=300)
+def compute_product_lookups(df_hash):
+    df = get_product_dataframe(get_wordpress_products())
+    if df is None or df.empty:
+        return None
+    
+    products = sorted(df['Title'].tolist())
+    price_map = dict(zip(df['Title'], df['Unit Price']))
+    desc_map = dict(zip(df['Title'], df.get('Content', '')))
+    image_map = dict(zip(df['Title'], df.get('Image Featured', ''))) if 'Image Featured' in df.columns else {}
+    code_map = dict(zip(df['Title'], df.get('SKU', ''))) if 'SKU' in df.columns else {}
+    reverse_code_map = {}
+    for product, code in code_map.items():
+        if pd.notna(code) and str(code).strip() not in ["", "nan"]:
+            clean_code = str(code).strip()
+            reverse_code_map[clean_code] = product
+    code_options = sorted(reverse_code_map.keys())
+    
+    return {
+        'products': products,
+        'price_map': price_map,
+        'desc_map': desc_map,
+        'image_map': image_map,
+        'code_map': code_map,
+        'reverse_code_map': reverse_code_map,
+        'code_options': code_options
+    }
 
-df = get_product_dataframe(products)
-if df is None or df.empty:
+# 🚀 Load products from WordPress
+lookups = compute_product_lookups("v1")
+if lookups is None:
     st.error("❌ No product data loaded from WordPress")
     st.stop()
 
-# Validate required columns
-required_columns = ['Title', 'Unit Price']
-if not all(col in df.columns for col in required_columns):
-    st.error(f"❌ Required columns {required_columns} not found in the sheet.")
-    st.stop()
+
+def create_product_in_woocommerce(product_data):
+    """Create a new product in WordPress"""
+    try:
+        wp_url = st.secrets["wordpress"]["url"]
+        consumer_key = st.secrets["wordpress"]["consumer_key"]
+        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
+        
+        url = f"{wp_url}/wp-json/wc/v3/products"
+        
+        response = requests.post(
+            url,
+            auth=(consumer_key, consumer_secret),
+            json=product_data,
+            timeout=10
+        )
+        
+        if response.status_code == 201:
+            st.success("✅ Product created in WordPress!")
+            return True
+        else:
+            st.error(f"❌ Failed to create: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        st.error(f"❌ Error creating product: {e}")
+        return False
+
+def update_product_in_woocommerce(product_id, product_data):
+    """Update existing product"""
+    try:
+        wp_url = st.secrets["wordpress"]["url"]
+        consumer_key = st.secrets["wordpress"]["consumer_key"]
+        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
+        
+        url = f"{wp_url}/wp-json/wc/v3/products/{product_id}"
+        
+        response = requests.put(
+            url,
+            auth=(consumer_key, consumer_secret),
+            json=product_data,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            st.success("✅ Product updated in WordPress!")
+            return True
+        else:
+            st.error(f"❌ Failed to update: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        st.error(f"❌ Error updating product: {e}")
+        return False
+
+def delete_product_in_woocommerce(product_id):
+    """Delete product from WordPress"""
+    try:
+        wp_url = st.secrets["wordpress"]["url"]
+        consumer_key = st.secrets["wordpress"]["consumer_key"]
+        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
+        
+        url = f"{wp_url}/wp-json/wc/v3/products/{product_id}"
+        
+        response = requests.delete(
+            url,
+            auth=(consumer_key, consumer_secret),
+            params={"force": True},  # Permanent delete
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            st.success("✅ Product deleted from WordPress!")
+            return True
+        else:
+            st.error(f"❌ Failed to delete: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        st.error(f"❌ Error deleting product: {e}")
+        return False
+
 
 # ========== Admin Panel ==========
 if st.session_state.role == "admin":
@@ -719,150 +810,159 @@ if st.session_state.role == "admin":
         tab1, tab2, tab3 = st.tabs(["➕ Add Product", "🗑 Delete Product", "✏ Update Product"])
         with tab1:
             st.subheader("Add New Product")
-            
-            # Create columns for form and image preview
             form_col, image_col = st.columns([2, 1])
             
             with form_col:
                 with st.form("add_product_form"):
-                    new_item = st.text_input("Product Name")
+                    new_name = st.text_input("Product Name*", help="Required field")
                     new_price = st.number_input("Price per Item", min_value=0.0, format="%.2f")
-                    new_desc = st.text_area("Material / Description")
-                    new_color = st.text_input("Color")
-                    new_dim = st.text_input("Dimensions (Optional)")
-                    new_image = st.text_input("Image Featured (Optional)", help="Paste Google Drive link or direct Image Featured")
+                    new_sku = st.text_input("SKU (Product Code)", help="Optional: Unique product identifier like CHAIR-001")
+                    new_desc = st.text_area("Description / Material")
+                    new_image = st.text_input("Image URL (Optional)", help="Direct image URL from WordPress")
                     
-                    if st.form_submit_button("✅ Add to Sheet"):
-                        if not new_item:
-                            st.warning("Product name is required.")
+                    if st.form_submit_button("✅ Create in WordPress"):
+                        if not new_name:
+                            st.error("❌ Product name is required")
                         else:
-                            # Convert Google Drive URL if provided
-                            converted_image_url = convert_google_drive_url_for_storage(new_image) if new_image else ""
-                            
-                            new_row = {
-                                "Title": new_item,
-                                "Unit Price": new_price,
-                                "Content": new_desc,
-                                "Color": new_color,
-                                "Size (mm)": new_dim,
-                                "Photo": converted_image_url
+                            # Prepare WooCommerce product data
+                            product_data = {
+                                "name": new_name,
+                                "type": "simple",
+                                "SKU": new_sku,
+                                "regular_price": str(new_price),
+                                "description": new_desc,
+                                "status": "publish"
                             }
-                            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                            set_with_dataframe(sheet, df)
-                            st.cache_data.clear()  # Clear cache after update
-                            st.success(f"✅ '{new_item}' added successfully!")
-                            st.rerun()
-            
-            with image_col:
-                st.markdown("Image Preview:")
-                display_admin_preview(new_image if 'new_image' in locals() else "")
-                
-                st.markdown("Supported formats:")
-                st.markdown("• Direct Image Featureds (jpg, png, etc.)")
-                st.markdown("• Google Drive share links")
-                st.markdown("Example Google Drive URL:")
-                st.code("https://drive.google.com/file/d/1vN8l2FX.../view", language="text")
+                            
+                            # Add image if provided
+                            if new_image.strip():
+                                product_data["images"] = [{"src": new_image.strip()}]
 
+                            
+                            # Send to WordPress
+                            if create_product_in_woocommerce(product_data):
+                                st.cache_data.clear()  # Force refresh
+                                st.rerun()
         with tab2:
             st.subheader("Delete Product")
-            with st.form("delete_product_form"):
-                product_to_delete = st.selectbox("Select product to delete", df["Title"].tolist())
-                st.warning("⚠ This will permanently delete the product from the spreadsheet!")
-                confirm_delete = st.checkbox("I confirm I want to delete this product")
-                
-                submitted = st.form_submit_button("❌ Delete Product")
-                if submitted:
-                    if confirm_delete:
-                        matching_rows = df[df["Title"] == product_to_delete]
-                        if len(matching_rows) == 0:
-                            st.error(f"Product '{product_to_delete}' not found.")
-                        else:
-                            row_index = matching_rows.index[0] + 2
-                            sheet.delete_rows(int(row_index))
-                            st.cache_data.clear()
-                            st.success(f"❌ '{product_to_delete}' deleted successfully!")
-                            st.rerun()
+            
+            # Use product names from lookups
+            product_names = lookups['products']
+            product_to_delete = st.selectbox("Select product to delete", product_names)
+            
+            confirm = st.checkbox(f"I want to delete '{product_to_delete}'")
+            
+            if st.button("🗑 Permanently Delete") and confirm:
+                if product_to_delete in lookups['products']:
+                    # Find the product ID
+                    # Get full WordPress products to find ID
+                    wordpress_products = get_wordpress_products()
+                    if wordpress_products is None:
+                        st.error("❌ Could not load products from WordPress.")
+                        st.stop()
+
+                    # Find the product ID
+                    product_id = None
+                    for p in wordpress_products:
+                        if p["name"] == product_to_delete:
+                            product_id = p["id"]
+                            break
+
+                    if not product_id:
+                        st.error(f"❌ Could not find product ID for '{product_to_delete}' in WordPress.")
+                        st.stop()
+                    
+                    if not product_id:
+                        st.error("❌ Could not find product ID")
                     else:
-                        st.error("Please check the confirmation box to delete")
+                        # Call delete function
+                        if delete_product_in_woocommerce(product_id):
+                            st.cache_data.clear()
+                            st.rerun()
+                else:
+                    st.error(f"❌ Product '{product_to_delete}' not found.")
+            elif not confirm:
+                st.warning("❌ Please confirm deletion")
+            
+            
 
         with tab3:
             st.subheader("Update Product")
             form_col, image_col = st.columns([2, 1])
-            with form_col:
-                # Reset selectbox if current selection is no longer valid
-                if "update_product_select" in st.session_state and st.session_state.update_product_select not in df["Title"].values:
-                    st.session_state.update_product_select = None
-                selected_product = st.selectbox("Select product to update", df["Title"].tolist(), key="update_product_select")
-                if selected_product and selected_product in df["Title"].values:
-                    existing_row = df[df["Title"] == selected_product].iloc[0]
-                else:
-                    existing_row = None
-                with st.form("update_product_form"):
-                    if existing_row is not None:
-                        updated_name = st.text_input("Update Product Name", value=selected_product)
-                        updated_price = st.number_input("Update Price", value=float(existing_row["Unit Price"]))
-                        updated_desc = st.text_area("Update Description", value=existing_row.get("Content", ""))
-                        updated_color = st.text_input("Update Color", value=existing_row.get("Color", ""))
-                        updated_dim = st.text_input("Update Dimensions", value=existing_row.get("Size (mm)", ""))
-                        updated_image = st.text_input("Update Image Featured", value=existing_row.get("Image Featured", ""), help="Paste Google Drive link or direct Image Featured")
-                    else:
-                        updated_name = st.text_input("Update Product Name", value="")
-                        updated_price = st.number_input("Update Price", value=0.0)
-                        updated_desc = st.text_area("Update Description", value="")
-                        updated_color = st.text_input("Update Color", value="")
-                        updated_dim = st.text_input("Update Dimensions", value="")
-                        updated_image = st.text_input("Update Image Featured", value="", help="Paste Google Drive link or direct Image Featured")
-                    if st.form_submit_button("✅ Apply Update"):
-                        if selected_product and updated_name.strip():
-                            if updated_name != selected_product and updated_name in df["Title"].values:
-                                st.error(f"❌ Product name '{updated_name}' already exists!")
-                            else:
-                                converted_image_url = convert_google_drive_url_for_storage(updated_image) if updated_image else ""
-                                df.loc[df["Title"] == selected_product, 
-                                       ["Title", "Unit Price", "Content", "Color", "Size (mm)", "Image Featured"]] = \
-                                    [updated_name.strip(), updated_price, updated_desc, updated_color, updated_dim, converted_image_url]
-                                set_with_dataframe(sheet, df)
-                                st.cache_data.clear()
-                                st.success(f"✅ '{selected_product}' updated successfully!")
-                                st.rerun()
-                        elif not updated_name.strip():
-                            st.error("❌ Product name cannot be empty!")
-                        else:
-                            st.error("Please select a product to update")
-        
-        with image_col:
-            st.markdown("Current Product Data:")
-            if selected_product and existing_row is not None:
-                st.write(f"Product: {selected_product}")
-                st.write(f"Current Price: ${existing_row['Unit Price']:.2f}")
-                
-                if existing_row.get("Content", ""):
-                    st.write(f"Content: {existing_row['Content']}")
-                
-                if existing_row.get("CF.Colors", ""):
-                    st.write(f"Color: {existing_row['CF.Colors']}")
-                
-                if existing_row.get("CF.Dimensions", ""):
-                    st.write(f"Dimensions: {existing_row['CF.Dimensions']}")
-                
-                st.markdown("---")
-                st.markdown("Current Image:")
-                current_image = existing_row.get("CF.Image Featured", "")
-                
-                if current_image:
-                    display_admin_preview(current_image, f"Current image for {selected_product}")
-                else:
-                    st.info("📷 No image set for this product")
-            else:
-                st.info("👆 Select a product above to see its current data")
             
-            st.markdown("Updated Image Preview:")
-            if selected_product and 'updated_image' in locals() and updated_image:
-                display_admin_preview(updated_image, "Updated Image Preview")
-            elif selected_product:
-                st.info("📷 Enter a new Image Featured above to see preview")
+            with form_col:
+                # Use product names from lookups
+                product_names = lookups['products']
+                selected_product = st.selectbox(
+                    "Select product to update", 
+                    product_names, 
+                    key="update_product_select"
+                )
+                
+                # Find the product details
+                if selected_product != "-- Select --" and selected_product in lookups['products']:
+                    with st.form("update_product_form"):
+                        updated_name = st.text_input("Product Name", value=selected_product)
+                        updated_price = st.number_input(
+                            "Price", 
+                            value=lookups['price_map'].get(selected_product, 0.0),
+                            min_value=0.0,
+                            format="%.2f"
+                        )
+                        updated_sku = st.text_input("SKU (Product Code)", 
+                            value=lookups['code_map'].get(selected_product, ""),
+                            help="Edit product code"
+                        )
 
-        st.stop()
+                        updated_desc = st.text_area(
+                            "Description", 
+                            value=lookups['desc_map'].get(selected_product, "")
+                        )
+                        updated_image = st.text_input(
+                            "Image URL", 
+                            value=lookups['image_map'].get(selected_product, "")
+                        )
+                        
+                        if st.form_submit_button("✅ Update in WordPress"):
+                            # Find the product ID from the raw WordPress data
+                            # Get full WordPress products
+                            wordpress_products = get_wordpress_products()
+                            if wordpress_products is None:
+                                st.error("❌ Could not load products from WordPress.")
+                                st.stop()
+
+                            # Find the product ID
+                            product_id = None
+                            for p in wordpress_products:
+                                if p["name"] == selected_product:
+                                    product_id = p["id"]
+                                    break
+
+                            if not product_id:
+                                st.error("❌ Could not find product ID in WordPress")
+                                st.stop()
+                            
+                            if not product_id:
+                                st.error("❌ Could not find product ID in WordPress")
+                            else:
+                                # Build update data
+                                update_data = {
+                                    "name": updated_name,
+                                    "regular_price": str(updated_price),
+                                    "description": updated_desc,
+                                }
+                                
+                                if updated_image.strip():
+                                    update_data["images"] = [{"src": updated_image.strip()}]
+                                    
+                                # Send update to WordPress
+                                if update_product_in_woocommerce(product_id, update_data):
+                                    st.cache_data.clear()  # Force refresh
+                                    st.rerun()
+                else:
+                    st.info("Please select a product to update")
+
+            st.stop()
 
 # ========== Buyer Panel ==========
 
@@ -1040,24 +1140,14 @@ if not st.session_state.form_submitted:
     st.stop()  
 # ========== Product Selection Interface ==========
 company_details = st.session_state.company_details
-products = df['Title'].tolist()
 
-def clean_cell(val):
-    if val is None or (isinstance(val, float) and math.isnan(val)):
-        return "" 
-    return str(val)
-
-# Pre-compute mappings for faster lookup
-price_map = dict(zip(df['Title'], df['Unit Price']))
-desc_map = dict(zip(df['Title'], df.get('Content', '')))
-image_map = dict(zip(df['Title'], df.get('Image Featured', ''))) if 'Image Featured' in df.columns else {}
-code_map = dict(zip(df['Title'], df.get('SKU', ''))) if 'SKU' in df.columns else {}
-# Reverse map: from SKU to product name
-reverse_code_map = {}
-for product, code in code_map.items():
-    if pd.notna(code) and str(code).strip() not in ["", "nan"]:
-        clean_code = str(code).strip()
-        reverse_code_map[clean_code] = product
+price_map = lookups['price_map']
+desc_map = lookups['desc_map']
+image_map = lookups['image_map']
+code_map = lookups['code_map']
+reverse_code_map = lookups['reverse_code_map']
+name_options = ["-- Select --"] + lookups['products']
+code_options = ["-- Select --"] + lookups['code_options']
 
 st.markdown(f" Quotation for {company_details['company_name']}")
 
@@ -1089,10 +1179,6 @@ for idx in st.session_state.row_indices:
     if code_key not in st.session_state:
         st.session_state[code_key] = "-- Select --"
 
-    # Build options
-    name_options = ["-- Select --"] + products
-    valid_codes = list(reverse_code_map.keys()) if reverse_code_map else []
-    code_options = ["-- Select --"] + valid_codes
 
     # Define two-way sync callbacks
     def on_name_change(_name_key=name_key, _code_key=code_key, _prod_key=prod_key, _flag_key=sync_flag_key):
@@ -1820,7 +1906,6 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
-
 
 
 
