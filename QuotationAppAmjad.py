@@ -86,9 +86,6 @@ def load_users_from_sheet():
             email = str(row.get("Email", "")).strip().lower()
             password = str(row.get("Password", "")).strip()
             role = str(row.get("Role", "")).strip()
-            if not email or not password or not role:
-                st.warning(f"⚠ Skipping incomplete user row: {row}")
-                continue
             if "@" not in email:
                 st.warning(f"⚠ Invalid email format: {email}")
                 continue
@@ -277,143 +274,241 @@ def load_user_history(user_email, sheet):
         st.error(f"❌ Failed to load history: {e}")
 
 
-# ========== Google Drive URL Conversion ==========
-def convert_google_drive_url_for_display(url):
-    """Convert Google Drive view URL (or NaN/number) to a clean string or thumbnail URL."""
-    if url is None or (isinstance(url, float) and math.isnan(url)) \
-       or isinstance(url, (int, float)) or str(url).strip() == "":
-        return ""
-    
+# ==========
+# 🛠️ REPLACE THESE THREE FUNCTIONS EXACTLY AS BELOW
+# ==========
+
+def extract_file_id(url):
+    """Robustly extract Google Drive file ID from ANY format."""
+    if not url or pd.isna(url):
+        return None
     s = str(url).strip()
-    
-    # Check if the URL contains a pipe character (multiple URLs)
-    if "|" in s:
-        # Return only the first URL after conversion
-        first_url = s.split("|")[0].strip()
-        return convert_google_drive_url_for_display(first_url)
-    
-    drive_pattern = r'https://drive\.google\.com/file/d/([a-zA-Z0-9_-]+)/view(\?usp=sharing)?$'
-    match = re.search(drive_pattern, s)
+    # Pattern 1: /file/d/FILE_ID/view[?...]
+    match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', s)
     if match:
-        file_id = match.group(1)
-        return f"https://drive.google.com/thumbnail?id={file_id}&sz=w300-h300"
+        return match.group(1)
+    # Pattern 2: uc?export=download&id=FILE_ID
+    match = re.search(r'id=([a-zA-Z0-9_-]+)', s)
+    if match:
+        return match.group(1)
+    # Pattern 3: open?id=FILE_ID
+    match = re.search(r'open\?id=([a-zA-Z0-9_-]+)', s)
+    if match:
+        return match.group(1)
+    return None
+
+def convert_google_drive_url_for_display(url):
+    """Convert ANY Google Drive URL → thumbnail (for Streamlit st.image)"""
+    if not url:
+        return ""
+    s = str(url).strip()
+    if s.lower() in ("", "nan"):
+        return ""
+    fid = extract_file_id(s)
+    if fid:
+        return f"https://drive.google.com/thumbnail?id={fid}&sz=w300"
+    # Fallback: return raw string (so you can debug)
     return s
 
-
 def convert_google_drive_url_for_storage(url):
-    """Convert Google Drive view URL to direct download URL for storage"""
-    if not url or pd.isna(url):
-        return url
-    
-    # Check if the URL contains a pipe character (multiple URLs)
-    if isinstance(url, str) and "|" in url:
-        # Return only the first URL after conversion
-        first_url = url.split("|")[0].strip()
-        return convert_google_drive_url_for_storage(first_url)
-    
-    # Pattern for Google Drive URLs
-    drive_pattern = r'https://drive\.google\.com/file/d/([a-zA-Z0-9_-]+)/view(\?usp=sharing)?$'
-    match = re.search(drive_pattern, url)
-    
-    if match:
-        file_id = match.group(1)
-        return f"https://drive.google.com/uc?export=download&id={file_id}"
-    
-    return url
+    """Convert ANY Google Drive URL → direct download (for PDF/image fetch)"""
+    if not url:
+        return ""
+    s = str(url).strip()
+    if s.lower() in ("", "nan"):
+        return ""
+    fid = extract_file_id(s)
+    if fid:
+        return f"https://drive.google.com/uc?export=download&id={fid}"
+    return s
 
 # ========== Google Sheets Connection ==========
 
-# @st.cache_resource
-# def get_gsheet_connection():
-#     """Cached Google Sheets connection using correct sheet ID and scopes"""
-#     try:
-#         # Use full scopes (no extra spaces!)
-#         scopes = [
-#             'https://www.googleapis.com/auth/spreadsheets',
-#             'https://www.googleapis.com/auth/drive'
-#         ]
+@st.cache_resource
+def get_gsheet_connection():
+    """Cached Google Sheets connection using correct sheet ID and scopes"""
+    try:
+        # Use full scopes (no extra spaces!)
+        scopes = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ]
         
-#         # Load service account from Streamlit secrets (NO filename needed)
-#         sa = gspread.service_account_from_dict(st.secrets["gcp_service_account"], scopes=scopes)
+        # Load service account from Streamlit secrets (NO filename needed)
+        sa = gspread.service_account_from_dict(st.secrets["gcp_service_account"], scopes=scopes)
         
-#         # Open by spreadsheet ID
-#         spreadsheet = sa.open_by_key("1iIAwJo2t3LL_2pTLl4QQyTET2tdcnxIRMsVWp-tlPYI")
+        # Open by spreadsheet ID
+        spreadsheet = sa.open_by_key("1rwpFuHgWZbV7FxoC6dVDIdwUb1ak7J8HSyz8zXl-jmM")
 
-#         # Try to get the worksheet
-#         try:
-#             worksheet = spreadsheet.worksheet("Sheet1")
-#             st.write("✅ Connected to Google Sheet with Sheet1 worksheet!")
-#             return worksheet
-#         except gspread.exceptions.WorksheetNotFound:
-#             st.error("❌ Worksheet 'Sheet1' not found.")
+        # Try to get the worksheet
+        try:
+            worksheet = spreadsheet.worksheet("Sheet1")
+            st.write("✅ Connected to Google Sheet with Sheet1 worksheet!")
+            return worksheet
+        except gspread.exceptions.WorksheetNotFound:
+            st.error("❌ Worksheet 'Sheet1' not found.")
             
-#             # List available worksheets for debugging
-#             worksheets = spreadsheet.worksheets()
-#             st.write(f"📋 Available worksheets: {[ws.title for ws in worksheets]}")
-#             return None
+            # List available worksheets for debugging
+            worksheets = spreadsheet.worksheets()
+            st.write(f"📋 Available worksheets: {[ws.title for ws in worksheets]}")
+            return None
 
-#     except gspread.exceptions.SpreadsheetNotFound:
-#         st.error("❌ Spreadsheet not found. Check the ID and sharing.")
-#         st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
-#         return None
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("❌ Spreadsheet not found. Check the ID and sharing.")
+        st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
+        return None
         
-#     except gspread.exceptions.APIError as api_error:
-#         st.error(f"❌ Google API Error: {api_error}")
-#         st.info("💡 Check if Google Sheets & Drive APIs are enabled in the GCP project.")
-#         return None
+    except gspread.exceptions.APIError as api_error:
+        st.error(f"❌ Google API Error: {api_error}")
+        st.info("💡 Check if Google Sheets & Drive APIs are enabled in the GCP project.")
+        return None
         
-#     except Exception as e:
-#         st.error(f"❌ Unexpected error connecting to Google Sheets: {e}")
-#         return None
+    except Exception as e:
+        st.error(f"❌ Unexpected error connecting to Google Sheets: {e}")
+        return None
 
-#     except gspread.exceptions.SpreadsheetNotFound:
-#         st.error("❌ Spreadsheet not found. Check the ID and sharing.")
-#         st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
-#         return None
-#     except gspread.exceptions.APIError as api_error:
-#         st.error(f"❌ Google API Error: {api_error}")
-#         st.info("💡 Check if Google Sheets & Drive APIs are enabled.")
-#         return None
-#     except Exception as e:
-#         st.error(f"❌ Unexpected error: {e}")
-#         return None
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("❌ Spreadsheet not found. Check the ID and sharing.")
+        st.info("💡 Make sure you shared the sheet with: amjadquotation@quotationappamjad.iam.gserviceaccount.com")
+        return None
+    except gspread.exceptions.APIError as api_error:
+        st.error(f"❌ Google API Error: {api_error}")
+        st.info("💡 Check if Google Sheets & Drive APIs are enabled.")
+        return None
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {e}")
+        return None
 
         
-# @st.cache_data(ttl=300)
-# def get_sheet_data(_sheet):
-#     """Fetch and process sheet data with caching"""
-
-#     if _sheet is None:
-#         return None
-#     try:
-       
-#         df = get_as_dataframe(
-#             _sheet,
-#             header=0,              
-#             skip_blank_rows=True,
-#             evaluate_formulas=True
-#         )
-
-#         df.dropna(how='all', inplace=True)
-
-      
-#         if df.empty:
-#             st.error("❌ ")
-#             return pd.DataFrame()
-
-   
-#         if 'Unit Price' in df.columns:
-#             df['Unit Price'] = df['Unit Price'].astype(str).str.replace("SAR|EGP|$", "", regex=True).str.replace(",", "").str.strip()
-#             df['Unit Price'] = pd.to_numeric(df['Unit Price'], errors='coerce').fillna(0.0)
-
-#         if 'Image Featured' in df.columns:
-#             df['Image Featured'] = df['Image Featured'].apply(convert_google_drive_url_for_storage)
-
-#         return df
-
-#     except Exception as e:
-#         st.error(f"❌{e}")
-#         return None
+@st.cache_data(ttl=300)
+def get_sheet_data(_sheet):
+    """
+    Fetch and process sheet data using RAW gspread API
+    This ensures NO rows are dropped unexpectedly
+    """
+    if _sheet is None:
+        return None
+    
+    try:
+        # 🔥 USE RAW API - Get ALL values directly from sheet
+        # This is more reliable than get_as_dataframe
+        all_values = _sheet.get_all_values()
+        
+        if not all_values or len(all_values) < 2:
+            st.error("❌ Sheet is empty or has no data rows.")
+            return pd.DataFrame()
+        
+        # First row is headers
+        headers = all_values[0]
+        data_rows = all_values[1:]  # All remaining rows
+        
+        # Create DataFrame manually
+        df = pd.DataFrame(data_rows, columns=headers)
+        
+        # Define expected columns (must match your sheet headers EXACTLY)
+        expected_cols = [
+            "Drawing",           # A
+            "Image Featured",    # B 
+            "Title",             # C
+            "SKU",               # D
+            "Size (mm)",         # E
+            "Color",             # F
+            "Content",           # G
+            "Unit Price"         # H
+        ]
+        
+        # Take only first 8 columns and rename them
+        if len(df.columns) >= 8:
+            df = df.iloc[:, :8].copy()
+            df.columns = expected_cols
+        else:
+            st.error(f"❌ Sheet has fewer than 8 columns. Found: {len(df.columns)}")
+            return pd.DataFrame()
+        
+        # 🔧 Filter out COMPLETELY empty rows (where all cells are empty)
+        # Create a mask where at least one cell has content
+        has_content = df.apply(lambda row: any(str(val).strip() != '' for val in row), axis=1)
+        df = df[has_content].copy()
+        
+        # 🔧 Now filter: keep only rows with valid Title
+        df['Title'] = df['Title'].astype(str).str.strip()
+        
+        # Remove rows where Title is empty or just whitespace
+        valid_title_mask = df['Title'].apply(lambda x: x != '' and x.lower() not in ['nan', 'none', 'null'])
+        df = df[valid_title_mask].copy()
+        
+        # Reset index to maintain clean row numbering
+        df = df.reset_index(drop=True)
+        
+        if df.empty:
+            st.error("❌ No valid products found after filtering.")
+            return pd.DataFrame()
+        
+        # 🔧 Clean Unit Price column - convert to numeric
+        if 'Unit Price' in df.columns:
+            def clean_price(val):
+                try:
+                    # Remove any currency symbols, commas, spaces
+                    val_str = str(val).replace('SAR', '').replace(',', '').strip()
+                    if val_str == '' or val_str.lower() in ['nan', 'none', 'null']:
+                        return 0.0
+                    return float(val_str)
+                except:
+                    return 0.0
+            
+            df['Unit Price'] = df['Unit Price'].apply(clean_price)
+        
+        # 🔧 Process Image URLs
+        if 'Image Featured' in df.columns:
+            def process_image_url(url):
+                url_str = str(url).strip()
+                if url_str == '' or url_str.lower() in ['nan', 'none', 'null']:
+                    return ""
+                # Convert Google Drive URLs
+                return convert_google_drive_url_for_storage(url_str)
+            
+            df['Image Featured'] = df['Image Featured'].apply(process_image_url)
+        
+        # 🔧 Process Drawing URLs  
+        if 'Drawing' in df.columns:
+            def process_image_url(url):
+                url_str = str(url).strip()
+                if url_str == '' or url_str.lower() in ['nan', 'none', 'null']:
+                    return ""
+                return convert_google_drive_url_for_storage(url_str)
+            
+            df['Drawing'] = df['Drawing'].apply(process_image_url)
+        
+        # 🔧 Clean SKU column
+        if 'SKU' in df.columns:
+            def clean_sku(val):
+                val_str = str(val).strip()
+                if val_str == '' or val_str.lower() in ['nan', 'none', 'null']:
+                    return ''
+                return val_str
+            
+            df['SKU'] = df['SKU'].apply(clean_sku)
+        
+        # 🔧 Clean other text columns
+        for col in ['Size (mm)', 'Color', 'Content']:
+            if col in df.columns:
+                def clean_text(val):
+                    val_str = str(val).strip()
+                    if val_str == '' or val_str.lower() in ['nan', 'none', 'null']:
+                        return ''
+                    return val_str
+                
+                df[col] = df[col].apply(clean_text)
+        
+        st.success(f"✅ Loaded {len(df)} products from sheet")
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ Error processing sheet: {e}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
 
 def load_user_history_from_sheet(user_email, sheet):
     """Load user's quotation history from Google Sheet"""
@@ -460,19 +555,25 @@ def fetch_image_bytes(url):
 
 # ====== Display Product Image ======
 def display_product_image(c2, prod, image_url, width=100):
+    """Display product image with better error visibility"""
     img_url = convert_google_drive_url_for_display(image_url)
     with c2:
-        if img_url:
+        if img_url and img_url != "":
             try:
                 img_bytes = fetch_image_bytes(img_url)
-                img = PILImage.open(BytesIO(img_bytes))
-                st.image(img, caption=prod, use_container_width=True)
+                if img_bytes:
+                    img = PILImage.open(BytesIO(img_bytes))
+                    st.image(img, caption=prod, use_container_width=True)
+                else:
+                    st.warning("⚠️ Image unavailable")
+                    st.caption(f"URL: {img_url[:50]}...")
             except Exception as e:
                 st.error("❌ Image Error")
-                st.caption(str(e))
+                st.caption(f"{str(e)[:100]}")
         else:
-            st.info("📷 No image")
-            st.caption("No image available")
+            st.info("📷 No image URL")
+            if image_url and image_url != "":
+                st.caption(f"Raw: {str(image_url)[:50]}")
 
 
 
@@ -557,219 +658,173 @@ if st.button("🔄 Refresh Sheet Data"):
     st.cache_resource.clear()
     st.rerun()
 
-@st.cache_data(ttl=300)
-def get_wordpress_products():
-    """Fetch all published products from WordPress/WooCommerce REST API"""
+# 🔍 DEBUG BUTTON (TEMPORARY - Remove after testing)
+
+def debug_product_data_detailed():
+    """
+    Comprehensive debug function that tests everything
+    """
+    st.write("### 🔍 Detailed Product Data Debug")
+    
+    worksheet = get_gsheet_connection()
+    if not worksheet:
+        st.error("❌ Could not connect to worksheet")
+        return
+    
+    st.write("✅ Worksheet connected")
+    
+    # Get raw data to see what's in the sheet
+    st.write("#### 📊 Raw Sheet Data (first 5 rows)")
     try:
-        wp_url = st.secrets["wordpress"]["url"]
-        consumer_key = st.secrets["wordpress"]["consumer_key"]
-        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
-        api_url = f"{wp_url}/wp-json/wc/v3/products"
-        all_products = []
-        page = 1
-        st.write("📡 Fetching products from WordPress...")
-        while True:
-            response = requests.get(
-                api_url,
-                auth=(consumer_key, consumer_secret),
-                params={"page": page, "per_page": 100, "status": "publish"},
-                timeout=10
-            )
-            if response.status_code == 401:
-                st.error("❌ Unauthorized: Invalid WordPress credentials")
-                return None
-            elif response.status_code == 404:
-                st.error("❌ WooCommerce REST API not found. Is WooCommerce active?")
-                return None
-            elif response.status_code != 200:
-                st.error(f"❌ API Error: {response.status_code} - {response.text}")
-                return None
-            products = response.json()
-            if not products:
-                break
-            all_products.extend(products)
-            page += 1
-            if len(products) < 100:
-                break
-
-        st.success(f"✅ Loaded {len(all_products)} products from WordPress")
-        return all_products  # This now includes 'id', 'name', etc.
+        raw_data = worksheet.get_all_values()
+        st.write(f"Total rows in sheet (including header): {len(raw_data)}")
+        st.write("Headers:", raw_data[0] if raw_data else "No data")
+        if len(raw_data) > 1:
+            st.write("First 5 data rows:")
+            for i, row in enumerate(raw_data[1:6], 1):
+                st.write(f"Row {i}: {row[:8]}")  # Show first 8 columns
     except Exception as e:
-        st.error(f"❌ Failed to connect to WordPress: {e}")
-        return None
+        st.error(f"Error getting raw data: {e}")
+    
+    # Get processed data
+    st.write("#### 🔧 Processed Data")
+    df = get_sheet_data(worksheet)
+    if df is None or df.empty:
+        st.error("❌ No data after processing")
+        return
+    
+    st.write(f"✅ Processed: {len(df)} products")
+    st.dataframe(df.head(10))
+    
+    # Get lookups
+    lookups = compute_product_lookups("v1")
+    if not lookups:
+        st.error("❌ compute_product_lookups failed")
+        return
+    
+    # Statistics
+    st.write("#### 📈 Statistics")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Products", len(lookups['products']))
+    with col2:
+        st.metric("With SKU", len(lookups['code_options']))
+    with col3:
+        no_sku = len([p for p in lookups['products'] if not lookups['code_map'].get(p)])
+        st.metric("Without SKU", no_sku)
+    with col4:
+        with_image = len([p for p in lookups['products'] if lookups['image_map'].get(p)])
+        st.metric("With Images", with_image)
+    
+    # Product details
+    st.write("#### 📋 Product Details (first 10)")
+    for i, product in enumerate(lookups['products'][:10], 1):
+        sku = lookups['code_map'].get(product, 'NO SKU')
+        price = lookups['price_map'].get(product, 0.0)
+        image = lookups['image_map'].get(product, 'NO IMAGE')
+        
+        with st.expander(f"{i}. {product}"):
+            st.write(f"**SKU:** {sku}")
+            st.write(f"**Price:** {price} SAR")
+            st.write(f"**Image URL:** {image[:100]}...")
+            
+            # Try to display the image
+            if image and image != 'NO IMAGE':
+                try:
+                    display_url = convert_google_drive_url_for_display(image)
+                    st.image(display_url, width=200)
+                except Exception as e:
+                    st.error(f"Cannot display image: {e}")
+    
+    # Image issues
+    no_image = [p for p in lookups['products'] if not lookups['image_map'].get(p)]
+    if no_image:
+        with st.expander(f"⚠️ Products without images ({len(no_image)})"):
+            for prod in no_image[:20]:
+                st.write(f"- {prod}")
 
-@st.cache_data(ttl=300)
-def get_product_dataframe(products):
-    """Convert WooCommerce products to DataFrame with fallbacks for missing data"""
-    if not products:
-        return None
-    
-    data = []
-    for p in products:
-        title = p["name"] if p["name"] else "Unnamed Product"
-        
-        try:
-            price = float(p["price"]) if p["price"] and str(p["price"]).strip() not in ["", "0"] else 0.0
-        except (ValueError, TypeError):
-            price = 0.0
-        
-        sku = p["sku"] if p["sku"] else ""
-        # Get all image URLs, joined by pipe "|"
-        image_urls = [img["src"] for img in p["images"]] if p["images"] else []
-        image_url = "|".join(image_urls)  # Store multiple URLs
-        
-        raw_desc = p["description"] or p["short_description"] or ""
-        content = BeautifulSoup(raw_desc, "html.parser").get_text().strip() if raw_desc else ""
-        
-        color = ""
-        size = ""
-        if content:
-            color_match = re.search(r'Color:\s*([^\n<]+)', content, re.IGNORECASE)
-            size_match = re.search(r'Size:\s*([^\n<]+)', content, re.IGNORECASE)
-            if color_match:
-                color = color_match.group(1).strip()
-                content = re.sub(r'Color:[^<\n]*', '', content)
-            if size_match:
-                size = size_match.group(1).replace('*', 'x').strip()
-                content = re.sub(r'Size:[^<\n]*', '', content)
-        
-        for attr in p.get("attributes", []):
-            attr_name = attr["name"].strip().lower()
-            attr_value = ", ".join(attr["options"]) if attr["options"] else ""
-            if "color" in attr_name:
-                color = attr_value
-            elif "size" in attr_name or "dimension" in attr_name:
-                size = attr_value
-        
-        color = color or ""
-        size = size or ""
-        content = re.sub(r'\s+', ' ', content).strip()
-        
-        data.append({
-            "Title": title,
-            "Unit Price": price,
-            "Content": content,
-            "Color": color,
-            "Size (mm)": size,
-            "Image Featured": image_url,
-            "SKU": sku
-        })
-    
-    df = pd.DataFrame(data)
-    return df
+if st.sidebar.button("🔍 Debug Product Data"):
+    debug_product_data_detailed()
 
 @st.cache_data(ttl=300)
 def compute_product_lookups(df_hash):
-    df = get_product_dataframe(get_wordpress_products())
+    worksheet = get_gsheet_connection()
+    df = get_sheet_data(worksheet)
     if df is None or df.empty:
+        st.warning("⚠️ No data loaded from sheet")
         return None
     
-    products = sorted(df['Title'].tolist())
-    price_map = dict(zip(df['Title'], df['Unit Price']))
-    desc_map = dict(zip(df['Title'], df.get('Content', '')))
-    image_map = dict(zip(df['Title'], df.get('Image Featured', ''))) if 'Image Featured' in df.columns else {}
-    code_map = dict(zip(df['Title'], df.get('SKU', ''))) if 'SKU' in df.columns else {}
+    df = df.copy()
+    df['original_order'] = range(len(df))
+    
+    # Create products list with UNIQUE keys (index + title)
+    products = []
+    price_map = {}
+    desc_map = {}
+    image_map = {}
+    code_map = {}
+    title_to_key_map = {}  # Map: display_name -> unique_key
+    
+    for idx, row in df.iterrows():
+        title = row['Title']
+        sku = str(row.get('SKU', '')).strip()
+        
+        # Create UNIQUE key: combine index and title
+        unique_key = f"{idx}_{title}"
+        display_name = title
+        
+        # If SKU exists, append it to display name for clarity
+        if sku and sku not in ['', 'nan', 'NaN', 'None']:
+            display_name = f"{title} ({sku})"
+        
+        products.append(display_name)
+        title_to_key_map[display_name] = unique_key
+        
+        # Store all mappings using unique key
+        price_map[display_name] = float(row.get('Unit Price', 0.0))
+        
+        desc_val = row.get('Content', '')
+        desc_map[display_name] = '' if desc_val in ['nan', 'NaN', 'None'] else str(desc_val)
+        
+        image_val = row.get('Image Featured', '')
+        image_map[display_name] = '' if image_val in ['nan', 'NaN', 'None', ''] else str(image_val)
+        
+        # SKU mapping
+        if sku and sku not in ['', 'nan', 'NaN', 'None']:
+            code_map[display_name] = sku
+        else:
+            code_map[display_name] = ''
+    
+    # Create reverse code map (SKU -> display_name)
     reverse_code_map = {}
     for product, code in code_map.items():
-        if pd.notna(code) and str(code).strip() not in ["", "nan"]:
-            clean_code = str(code).strip()
-            reverse_code_map[clean_code] = product
-    code_options = sorted(reverse_code_map.keys())
+        if code and code not in reverse_code_map:  # Keep first occurrence
+            reverse_code_map[code] = product
+    
+    # Create code_options list (ALL unique SKUs)
+    code_options = []
+    for product in products:
+        code = code_map.get(product, '')
+        if code and code not in code_options:
+            code_options.append(code)
     
     return {
-        'products': products,
+        'products': products,              # All 85 products with unique display names
         'price_map': price_map,
         'desc_map': desc_map,
         'image_map': image_map,
         'code_map': code_map,
         'reverse_code_map': reverse_code_map,
-        'code_options': code_options
+        'code_options': code_options,      # All unique SKUs
+        'title_to_key_map': title_to_key_map
     }
-
-# 🚀 Load products from WordPress
+    
+# 🚀 Load product
 lookups = compute_product_lookups("v1")
 if lookups is None:
-    st.error("❌ No product data loaded from WordPress")
+    st.error("❌ No product data loaded")
     st.stop()
 
-
-def create_product_in_woocommerce(product_data):
-    """Create a new product in WordPress"""
-    try:
-        wp_url = st.secrets["wordpress"]["url"]
-        consumer_key = st.secrets["wordpress"]["consumer_key"]
-        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
-        
-        url = f"{wp_url}/wp-json/wc/v3/products"
-        
-        response = requests.post(
-            url,
-            auth=(consumer_key, consumer_secret),
-            json=product_data,
-            timeout=10
-        )
-        
-        if response.status_code == 201:
-            st.success("✅ Product created in WordPress!")
-            return True
-        else:
-            st.error(f"❌ Failed to create: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        st.error(f"❌ Error creating product: {e}")
-        return False
-
-def update_product_in_woocommerce(product_id, product_data):
-    """Update existing product"""
-    try:
-        wp_url = st.secrets["wordpress"]["url"]
-        consumer_key = st.secrets["wordpress"]["consumer_key"]
-        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
-        
-        url = f"{wp_url}/wp-json/wc/v3/products/{product_id}"
-        
-        response = requests.put(
-            url,
-            auth=(consumer_key, consumer_secret),
-            json=product_data,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            st.success("✅ Product updated in WordPress!")
-            return True
-        else:
-            st.error(f"❌ Failed to update: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        st.error(f"❌ Error updating product: {e}")
-        return False
-
-def delete_product_in_woocommerce(product_id):
-    """Delete product from WordPress"""
-    try:
-        wp_url = st.secrets["wordpress"]["url"]
-        consumer_key = st.secrets["wordpress"]["consumer_key"]
-        consumer_secret = st.secrets["wordpress"]["consumer_secret"]
-        
-        url = f"{wp_url}/wp-json/wc/v3/products/{product_id}"
-        
-        response = requests.delete(
-            url,
-            auth=(consumer_key, consumer_secret),
-            params={"force": True},  # Permanent delete
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            st.success("✅ Product deleted from WordPress!")
-            return True
-        else:
-            st.error(f"❌ Failed to delete: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        st.error(f"❌ Error deleting product: {e}")
-        return False
 
 
 # ========== Admin Panel ==========
@@ -1276,7 +1331,7 @@ for idx in st.session_state.row_indices:
         c7.write(f"{line_total:.2f} SAR")
 
         # Store original image URLs (all of them) separated by |
-        original_image_urls = df.loc[df["Title"] == prod, "Image Featured"].values[0] if not df[df["Title"] == prod].empty else ""
+        original_image_urls = lookups['image_map'].get(prod, "")
 
         output_data.append({
             "Item": prod,
@@ -1322,21 +1377,37 @@ if output_data:
 
 # ========== PDF Generation Functions ==========
 def download_image_for_pdf(url, max_size=(300, 300)):
+    """Download and resize image for PDF with better error handling"""
     try:
-        # Check if the URL contains a pipe character (multiple URLs)
+        if not url or url == "":
+            return None
+        
+        # Handle multiple URLs
         if "|" in url:
-            # Use only the first URL
             url = url.split("|")[0].strip()
-            
-        response = requests.get(url, timeout=5)
+        
+        # Convert Google Drive URL if needed
+        download_url = convert_google_drive_url_for_storage(url)
+        
+        # Try to download
+        response = requests.get(download_url, timeout=10)
         response.raise_for_status()
         
-        img = PILImage.open(BytesIO(response.content)).convert("RGB")
+        # Open and process image
+        img = PILImage.open(BytesIO(response.content))
         
-        # Resize while maintaining aspect ratio (better than thumbnail)
+        # Convert to RGB if needed (handles PNG with alpha)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = PILImage.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            img = background
+        
+        # Resize while maintaining aspect ratio
         img_ratio = img.width / img.height
         max_width, max_height = max_size
-
+        
         if img.width > max_width or img.height > max_height:
             if img_ratio > 1:
                 # Wider than tall
@@ -1347,15 +1418,21 @@ def download_image_for_pdf(url, max_size=(300, 300)):
                 new_height = max_height
                 new_width = int(max_height * img_ratio)
             img = img.resize((new_width, new_height), PILImage.Resampling.LANCZOS)
-
-        # Save as PNG (no quality loss)
+        
+        # Save as PNG
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
         img.save(temp_file, format="PNG")
         temp_file.close()
-
         return temp_file.name
+        
+    except requests.exceptions.Timeout:
+        print(f"Timeout downloading image: {url[:50]}")
+        return None
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error downloading image ({e.response.status_code}): {url[:50]}")
+        return None
     except Exception as e:
-        print(f"Image download/resize failed: {e}")
+        print(f"Error processing image from {url[:50]}: {e}")
         return None
 
 @st.cache_data
@@ -1523,12 +1600,12 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # ======================
         # Items Table
         # ======================
-        product_table_data = [["Ser.", "Image", "Product", "Description", "QTY", "Unit Price", "Line Total"]]
+        product_table_data = [["Ser.", "Image", "Product","Code", "Description", "QTY", "Unit Price", "Line Total"]]
         temp_files = []
 
         # Original total: 30 + 170 + 90 + 80 + 220 + 30 + 60 + 60 = 730
-        # Remove "Color" (80) → redistribute: Image +50 → 220, Description +30 → 250
-        col_widths = [30, 220, 90, 250, 30, 60, 60]   # better for one pic 
+        # Remove "Color" (80) → redistribute: Image +50 → 220    , Description +30 → 250
+        col_widths = [30, 220, 70, 60, 220, 30, 50, 50]   # better for one pic 
         #col_widths = [30, 320, 90, 150, 30, 60, 60]  # Sum = 730 pt / Use this when you need two pics 
         total_table_width = sum(col_widths)
 
