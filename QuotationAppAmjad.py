@@ -43,14 +43,14 @@ def init_session_state():
             "value": """1. Prices are in Saudi Riyal (SAR).
             2. Prices include 14% Value Added Tax (VAT), calculated separately.
             3. Prices also cover delivery, installation, and assembly.
-            4. Financial Offer Validity: 30 days from the submission date.
-            5. Delivery period: 21 to 30 days from the issuance of a purchase order (PO), advance payment and selection of preferred colors.
+            4. <b>Financial Offer Validity:</b> 30 days from the submission date.
+            5. <b>Delivery period:</b> 21 to 30 days from the issuance of a purchase order (PO), advance payment and selection of preferred colors.
             6. Goods will be stored free of charge in the company's warehouse for 7 days from the final delivery date. However, an additional fee of 1% of the total order value, up to a maximum of 5%, will be added weekly thereafter.
-            7. Delivery Locations: Unit No.4, Building No. 2981, Al Ihsaa st., Ar Rabwa, Riyadh, KSA 12813
+            7. <b>Delivery Locations:</b> Unit No.4, Building No. 2981, Al Ihsaa st., Ar Rabwa, Riyadh, KSA 12813
             8. Our technical offer fully complies with the requested product specifications.
-            9. Warranty: All products are covered by a 12-month warranty starting from the final delivery and installation date, guaranteeing against manufacturer defects, parts failure due to installation errors, and missing or incorrect parts.
-            10. Maintenance service and maximum response time will be within 48 - 72 hours from the notification time via email.
-            11. Terms of payment: 50% down payment and 50% upon confirmation of successful completion, handover of goods, original invoice, and delivery note to headquarters."""
+            9. <b>Warranty:</b> All products are covered by a 12-month warranty starting from the final delivery and installation date, guaranteeing against manufacturer defects, parts failure due to installation errors, and missing or incorrect parts.
+            10. <b>Maintenance service and maximum response time:</b> will be within 48 - 72 hours from the notification time via email.
+            11. <b>Terms of payment:</b> 50% down payment and 50% upon confirmation of successful completion, handover of goods, original invoice, and delivery note to headquarters."""
         },
         "history": [],  
         "history_loaded": False,         
@@ -658,93 +658,6 @@ if st.button("🔄 Refresh Sheet Data"):
     st.cache_resource.clear()
     st.rerun()
 
-# 🔍 DEBUG BUTTON (TEMPORARY - Remove after testing)
-
-def debug_product_data_detailed():
-    """
-    Comprehensive debug function that tests everything
-    """
-    st.write("### 🔍 Detailed Product Data Debug")
-    
-    worksheet = get_gsheet_connection()
-    if not worksheet:
-        st.error("❌ Could not connect to worksheet")
-        return
-    
-    st.write("✅ Worksheet connected")
-    
-    # Get raw data to see what's in the sheet
-    st.write("#### 📊 Raw Sheet Data (first 5 rows)")
-    try:
-        raw_data = worksheet.get_all_values()
-        st.write(f"Total rows in sheet (including header): {len(raw_data)}")
-        st.write("Headers:", raw_data[0] if raw_data else "No data")
-        if len(raw_data) > 1:
-            st.write("First 5 data rows:")
-            for i, row in enumerate(raw_data[1:6], 1):
-                st.write(f"Row {i}: {row[:8]}")  # Show first 8 columns
-    except Exception as e:
-        st.error(f"Error getting raw data: {e}")
-    
-    # Get processed data
-    st.write("#### 🔧 Processed Data")
-    df = get_sheet_data(worksheet)
-    if df is None or df.empty:
-        st.error("❌ No data after processing")
-        return
-    
-    st.write(f"✅ Processed: {len(df)} products")
-    st.dataframe(df.head(10))
-    
-    # Get lookups
-    lookups = compute_product_lookups("v1")
-    if not lookups:
-        st.error("❌ compute_product_lookups failed")
-        return
-    
-    # Statistics
-    st.write("#### 📈 Statistics")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Products", len(lookups['products']))
-    with col2:
-        st.metric("With SKU", len(lookups['code_options']))
-    with col3:
-        no_sku = len([p for p in lookups['products'] if not lookups['code_map'].get(p)])
-        st.metric("Without SKU", no_sku)
-    with col4:
-        with_image = len([p for p in lookups['products'] if lookups['image_map'].get(p)])
-        st.metric("With Images", with_image)
-    
-    # Product details
-    st.write("#### 📋 Product Details (first 10)")
-    for i, product in enumerate(lookups['products'][:10], 1):
-        sku = lookups['code_map'].get(product, 'NO SKU')
-        price = lookups['price_map'].get(product, 0.0)
-        image = lookups['image_map'].get(product, 'NO IMAGE')
-        
-        with st.expander(f"{i}. {product}"):
-            st.write(f"**SKU:** {sku}")
-            st.write(f"**Price:** {price} SAR")
-            st.write(f"**Image URL:** {image[:100]}...")
-            
-            # Try to display the image
-            if image and image != 'NO IMAGE':
-                try:
-                    display_url = convert_google_drive_url_for_display(image)
-                    st.image(display_url, width=200)
-                except Exception as e:
-                    st.error(f"Cannot display image: {e}")
-    
-    # Image issues
-    no_image = [p for p in lookups['products'] if not lookups['image_map'].get(p)]
-    if no_image:
-        with st.expander(f"⚠️ Products without images ({len(no_image)})"):
-            for prod in no_image[:20]:
-                st.write(f"- {prod}")
-
-if st.sidebar.button("🔍 Debug Product Data"):
-    debug_product_data_detailed()
 
 @st.cache_data(ttl=300)
 def compute_product_lookups(df_hash):
@@ -1541,14 +1454,14 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # ======================
         # Build company details dynamically
         company_lines = [
-            "<b><font color=\"maroon\">Quotation To:</font></b>"
+         
         ]
 
         # Always required
-        company_lines.append(f"<b><font color=\"maroon\">Company:</font></b> {company_details.get('company_name', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Contact Person:</font></b> {company_details.get('contact_person', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Email:</font></b> {company_details.get('contact_email', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Phone:</font></b> {company_details.get('contact_phone', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Date:</font></b> {company_details.get('current_date', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Valid Till:</font></b> {company_details.get('valid_till', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Prepared By:</font></b> {company_details.get('prepared_by', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Prepared Email:</font></b> {company_details.get('prepared_by_email', '')}")
 
         # Only show Address if not empty
         address = company_details.get('address', '').strip()
@@ -1559,10 +1472,11 @@ def build_pdf_cached(data_hash, final_total, company_details,
         company_lines.append("")
 
         # Prepared by section
-        company_lines.append(f"<b><font color=\"black\">Prepared By:</font></b> {company_details.get('prepared_by', '')}")
-        company_lines.append(f"<b><font color=\"black\">Prepared Email:</font></b> {company_details.get('prepared_by_email', '')}")
-        company_lines.append(f"<b><font color=\"black\">Date:</font></b> {company_details.get('current_date', '')}")
-        company_lines.append(f"<b><font color=\"black\">Valid Till:</font></b> {company_details.get('valid_till', '')}")
+
+        company_lines.append(f"<b><font color=\"black\">Company:</font></b> {company_details.get('company_name', '')}")
+        company_lines.append(f"<b><font color=\"black\">Contact Person:</font></b> {company_details.get('contact_person', '')}")
+        company_lines.append(f"<b><font color=\"black\">Email:</font></b> {company_details.get('contact_email', '')}")
+        company_lines.append(f"<b><font color=\"black\">Phone:</font></b> {company_details.get('contact_phone', '')}")
 
         # Join all lines
         details = "<para align=\"left\"><font size=14>" + "<br/>".join(company_lines) + "</font></para>"
@@ -1600,12 +1514,12 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # ======================
         # Items Table
         # ======================
-        product_table_data = [["Ser.", "Image", "Product","Code", "Description", "QTY", "Unit Price", "Line Total"]]
+        product_table_data = [["Ser.", "Image", "Product", "Description", "QTY", "Unit Price", "Line Total"]]
         temp_files = []
 
         # Original total: 30 + 170 + 90 + 80 + 220 + 30 + 60 + 60 = 730
         # Remove "Color" (80) → redistribute: Image +50 → 220    , Description +30 → 250
-        col_widths = [30, 220, 70, 60, 220, 30, 50, 50]   # better for one pic 
+        col_widths = [30, 240, 80, 220, 40, 60, 60]   # better for one pic 
         #col_widths = [30, 320, 90, 150, 30, 60, 60]  # Sum = 730 pt / Use this when you need two pics 
         total_table_width = sum(col_widths)
 
@@ -1633,10 +1547,10 @@ def build_pdf_cached(data_hash, final_total, company_details,
             # Create image element
             if image_paths:
                 # Define image dimensions
-                total_img_width = 220  # Leave 5pt padding on each side / edit this if you wanted another image 
+                total_img_width = 210  # Leave 5pt padding on each side / edit this if you wanted another image 
                 num_images = min(2 if USE_TWO_IMAGES else 1, len(image_paths))
                 img_width = (total_img_width - 10) / num_images  # 10pt gap between images
-                img_height = 160  # Good height for A3 row
+                img_height = 155  # Good height for A3 row
 
                 # Create image objects
                 img_flowables = []
@@ -1922,7 +1836,7 @@ if st.button("📅 Generate PDF Quotation") and output_data:
         st.session_state.show_edit_terms = True
         st.stop()
 
-    with st.spinner("Generating PDF and saving to cloud history..."):
+    with st.spinner("Generating PDF"):
         st.session_state.pdf_data = output_data
         data_str = str(output_data) + str(final_total) + str(company_details)
         data_hash = hashlib.md5(data_str.encode()).hexdigest()
