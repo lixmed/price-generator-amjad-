@@ -563,7 +563,7 @@ def display_product_image(c2, prod, image_url, width=100):
                 img_bytes = fetch_image_bytes(img_url)
                 if img_bytes:
                     img = PILImage.open(BytesIO(img_bytes))
-                    st.image(img, caption=prod, use_container_width=True)
+                    st.image(img, caption=prod, use_column_width=True)
                 else:
                     st.warning("⚠️ Image unavailable")
                     st.caption(f"URL: {img_url[:50]}...")
@@ -1897,6 +1897,7 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
+
 
 
 
