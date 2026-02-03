@@ -749,11 +749,11 @@ if st.session_state.role == "admin":
         st.subheader("Choose Your Action:")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🗃 Edit Database", use_container_width=True, help="Add, update, or delete products"):
+            if st.button("🗃 Edit Database", use_column_width=True, help="Add, update, or delete products"):
                 st.session_state.admin_choice = "database"
                 st.rerun()
         with col2:
-            if st.button("📋 Make Quotation", use_container_width=True, help="Create quotation for customers"):
+            if st.button("📋 Make Quotation", use_column_width=True, help="Create quotation for customers"):
                 st.session_state.admin_choice = "quotation"
                 st.rerun()
         st.info("👆 Please select what you would like to do")
@@ -940,7 +940,7 @@ if st.session_state.get('form_submitted', False):
     st.subheader("Choose an option:")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("✏️ Edit Company Info", use_container_width=True):
+        if st.button("✏️ Edit Company Info", use_column_width=True):
             st.session_state.form_submitted = False
             # Preserve the current company name in session state
             current_company_name = st.session_state.company_details.get("company_name", "")
@@ -950,7 +950,7 @@ if st.session_state.get('form_submitted', False):
                 st.session_state.editing_company = None
             st.rerun()
     with col2:
-        if st.button("🆕 Create New Quotation", use_container_width=True):
+        if st.button("🆕 Create New Quotation", use_column_width=True):
             st.session_state.edit_mode = False
             st.session_state.form_submitted = False
             # Preserve default values from last quotation
@@ -1286,7 +1286,7 @@ st.markdown("---")
 st.markdown(f"### 💰 Grand Total: {final_total:.2f} SAR")
 
 if output_data:
-    st.dataframe(pd.DataFrame(output_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(output_data), use_column_width=True)
 
 # ========== PDF Generation Functions ==========
 def download_image_for_pdf(url, max_size=(300, 300)):
@@ -1897,6 +1897,7 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
+
 
 
 
