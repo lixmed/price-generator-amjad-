@@ -698,6 +698,11 @@ def compute_product_lookups(df_hash):
         
         desc_val = row.get('Content', '')
         desc_map[display_name] = '' if desc_val in ['nan', 'NaN', 'None'] else str(desc_val)
+
+        size_map = {}
+        # Inside the loop over df rows:
+        size_val = row.get('Size (mm)', '')
+        size_map[display_name] = '' if size_val in ['nan', 'NaN', 'None', ''] else str(size_val)
         
         image_val = row.get('Image Featured', '')
         image_map[display_name] = '' if image_val in ['nan', 'NaN', 'None', ''] else str(image_val)
@@ -728,7 +733,8 @@ def compute_product_lookups(df_hash):
         'image_map': image_map,
         'code_map': code_map,
         'reverse_code_map': reverse_code_map,
-        'code_options': code_options,      # All unique SKUs
+        'code_options': code_options,      
+        'size_map': size_map,
         'title_to_key_map': title_to_key_map
     }
     
@@ -792,7 +798,6 @@ if st.session_state.role == "admin":
                         if not new_name:
                             st.error("❌ Product name is required")
                         else:
-                            # Prepare WooCommerce product data
                             product_data = {
                                 "name": new_name,
                                 "type": "simple",
@@ -1120,8 +1125,8 @@ code_options = ["-- Select --"] + lookups['code_options']
 st.markdown(f" Quotation for {company_details['company_name']}")
 
 # Product selection headers
-cols = st.columns([2, 1.5, 2, 2, 2, 2, 2, 0.5])
-headers = ["Product", "Code", "Image", "Price per 1", "Quantity", "Discount %", "Total", "Clear"]
+cols = st.columns([2, 1.5, 2, 1.5, 2, 2, 2, 2, 0.5])
+headers = ["Product", "Code", "Image", "Color", "Price", "Quantity", "Discount %", "Total", "Clr"]
 for i, header in enumerate(headers):
     cols[i].markdown(f"{header}")
 
@@ -1132,7 +1137,7 @@ basePrice = 0.0
 
 # Render product rows
 for idx in st.session_state.row_indices:
-    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([2, 1.5, 2, 2, 2, 2, 2, 0.5])
+    c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns([2, 1.5, 2, 1.5, 2, 2, 2, 2, 0.5])
 
     prod_key = f"prod_{idx}"
     name_key = f"name_{prod_key}"
@@ -1212,7 +1217,7 @@ for idx in st.session_state.row_indices:
     prod = st.session_state.selected_products.get(prod_key, "-- Select --")
 
     # Clear button clears both name/code and the product
-    if c8.button("X", key=f"clear_{idx}"):
+    if c9.button("X", key=f"clear_{idx}"):
         st.session_state.row_indices.remove(idx)
         st.session_state.selected_products.pop(prod_key, None)
         for k in (name_key, code_key, sync_flag_key):
@@ -1223,8 +1228,25 @@ for idx in st.session_state.row_indices:
     # If a product is selected, render details and compute totals
     if prod != "-- Select --":
         unit_price = price_map.get(prod, 0.0)
-        qty = c5.number_input("", min_value=1, value=1, step=1, key=f"qty_{idx}", label_visibility="collapsed")
-        discount = c6.number_input("", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key=f"disc_{idx}", label_visibility="collapsed")
+        qty = c6.number_input("", min_value=1, value=1, step=1, key=f"qty_{idx}", label_visibility="collapsed")
+        discount = c7.number_input("", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key=f"disc_{idx}", label_visibility="collapsed")
+
+        color_key = f"color_{idx}"
+
+        # Initialize only if not exists AND no widget has claimed it yet
+        if color_key not in st.session_state:
+            st.session_state[color_key] = "Choose color"
+
+        if prod != "-- Select --":
+            user_color = c4.text_input(  
+                "Color",
+                value=st.session_state[color_key],
+                key=color_key,
+                label_visibility="collapsed"
+            )
+        else:
+            c4.write("—")
+            user_color = "Choose color"
 
         valid_discount = 0.0 if discount > 20 else discount
         if discount > 20:
@@ -1240,16 +1262,18 @@ for idx in st.session_state.row_indices:
         image_url = image_map.get(prod, "")
         display_product_image(c3, prod, image_url)
 
-        c4.write(f"{unit_price:.2f} SAR")
-        c7.write(f"{line_total:.2f} SAR")
+        c5.write(f"{unit_price:.2f} SAR")
+        c8.write(f"{line_total:.2f} SAR")
 
-        # Store original image URLs (all of them) separated by |
         original_image_urls = lookups['image_map'].get(prod, "")
 
+       
         output_data.append({
             "Item": prod,
-            "Description": desc_map.get(prod, ""),
-            "Image": original_image_urls,  # Keep raw URLs for PDF
+            "Description": desc_map.get(prod, ""),          
+            "Size (mm)": lookups['size_map'].get(prod, ""), 
+            "Color": user_color,                            
+            "Image": original_image_urls,
             "Quantity": qty,
             "Price per item": unit_price,
             "Discount %": valid_discount,
@@ -1483,43 +1507,19 @@ def build_pdf_cached(data_hash, final_total, company_details,
         elems.append(Paragraph(details, aligned_style))
 
         # ======================
-        # Terms & Conditions (with terms.png BEFORE text)
-        # ======================
-        terms_img_path = "terms.png"
-        if os.path.exists(terms_img_path):
-            try:
-                img = RLImage(terms_img_path)
-                img._restrictSize(doc.width, 80)  # As in original
-                img.hAlign = 'CENTER'
-                elems.append(Spacer(1, 45))
-                elems.append(img)
-            except Exception as e:
-                print(f"Error adding terms.png: {e}")
-
-        # Now show the actual terms
-        terms_text = st.session_state.terms_and_conditions.get("value", "")
-        if terms_text:
-            import html
-            escaped_terms = html.escape(terms_text)
-            terms_html = "<br/>".join([f"{line.strip()}" for line in escaped_terms.split('\n') if line.strip()])
-            terms_para = Paragraph(f"<font size=12>{terms_html}</font>", aligned_style)
-            elems.append(Spacer(1, 20))
-            elems.append(terms_para)
-
-        # ======================
         # Force items table to start on a new page
         # ======================
-        elems.append(PageBreak())
+        # elems.append(PageBreak())
 
         # ======================
         # Items Table
         # ======================
-        product_table_data = [["Ser.", "Image", "Product", "Description", "QTY", "Unit Price", "Line Total"]]
+        product_table_data = [["Ser.", "Image", "Product", "Color", "Description", "QTY", "Price", "Total"]]
         temp_files = []
 
         # Original total: 30 + 170 + 90 + 80 + 220 + 30 + 60 + 60 = 730
         # Remove "Color" (80) → redistribute: Image +50 → 220    , Description +30 → 250
-        col_widths = [30, 240, 80, 220, 40, 60, 60]   # better for one pic 
+        col_widths = [30, 220, 80 ,60, 200, 40, 50, 50]  
         #col_widths = [30, 320, 90, 150, 30, 60, 60]  # Sum = 730 pt / Use this when you need two pics 
         total_table_width = sum(col_widths)
 
@@ -1596,22 +1596,31 @@ def build_pdf_cached(data_hash, final_total, company_details,
                     textColor=colors.grey))
 
             # Build rich description with bold labels
+            # Extract raw fields
             desc = r.get('Description', '').strip()
-            color = r.get('Color', '').strip()
-            dim = r.get('Dimensions', '').strip()
+            size = r.get('Size (mm)', '').strip()
+            user_color = r.get('Color', 'Choose color').strip()
 
-            desc_lines = []
-
+            # Build combined description: Description + Size
+            desc_parts = []
             if desc:
-                desc_lines.append(f"{desc}")
-            if color:
-                desc_lines.append(f"{color}")
-            if dim:
-                desc_lines.append(f"{dim}")
+                desc_parts.append(desc)
+            if size:
+                desc_parts.append(f"Size: {size}")
+            full_desc = "<br/>".join(desc_parts) if desc_parts else "—"
 
-            
+            # Create Paragraphs
+            desc_style = ParagraphStyle(
+                'Desc',
+                fontSize=11,
+                leading=15,
+                alignment=1,  # center
+                wordWrap='CJK'
+            )
+            desc_para = Paragraph(full_desc, desc_style)
 
-            full_desc = "<br/>".join(desc_lines) if desc_lines else "—"
+            styleN = ParagraphStyle('Center', fontSize=10, leading=17, alignment=1)
+            color_para = Paragraph(user_color, styleN)
             # Adjust the description style for better wrapping
             desc_style = ParagraphStyle(
                 'Desc', 
@@ -1628,7 +1637,8 @@ def build_pdf_cached(data_hash, final_total, company_details,
                 str(idx),
                 img_element,
                 Paragraph(str(r.get('Item', '')), styleN),
-                desc_para,
+                color_para,     
+                desc_para,     
                 str(r['Quantity']),
                 f"{r['Price per item']:.2f}",
                 f"{r['Total price']:.2f}"
@@ -1696,6 +1706,34 @@ def build_pdf_cached(data_hash, final_total, company_details,
             ('TEXTCOLOR', (1, 1), (1, 1), colors.red) if discount_amount > 0 else ('TEXTCOLOR', (1, 1), (1, 1), colors.black),
         ]))
         elems.append(summary_table)
+
+        elems.append(PageBreak())
+
+
+        # ======================
+        # Terms & Conditions (with terms.png)
+        # ======================
+        terms_img_path = "terms.png"
+        if os.path.exists(terms_img_path):
+            try:
+                img = RLImage(terms_img_path)
+                img._restrictSize(doc.width, 80)  # As in original
+                img.hAlign = 'CENTER'
+                elems.append(Spacer(1, 45))
+                elems.append(img)
+            except Exception as e:
+                print(f"Error adding terms.png: {e}")
+
+        # Now show the actual terms
+        terms_text = st.session_state.terms_and_conditions.get("value", "")
+        if terms_text:
+            import html
+            escaped_terms = html.escape(terms_text)
+            terms_html = "<br/>".join([f"{line.strip()}" for line in escaped_terms.split('\n') if line.strip()])
+            terms_para = Paragraph(f"<font size=12>{terms_html}</font>", aligned_style)
+            elems.append(Spacer(1, 20))
+            elems.append(terms_para)
+
 
         # ======================
         # Build PDF
@@ -1770,18 +1808,7 @@ def load_user_history_from_sheet(user_email, sheet):
         return []
 
 
-# ======================
-# ✏ EDIT / VIEW TERMS & CONDITIONS (Admin & Buyer)
-# ======================
-st.markdown("---")
 
-# Show different button based on role
-if st.session_state.role == "admin":
-    if st.button("📝 Edit Terms & Conditions"):
-        st.session_state.show_edit_terms = True
-elif st.session_state.role == "buyer":
-    if st.button("📄 View Terms & Conditions"):
-        st.session_state.show_edit_terms = True
 
 # Shared Modal: Editable for Admin, Read-only for Buyer
 if st.session_state.get("show_edit_terms", False):
@@ -1828,6 +1855,18 @@ if st.session_state.get("show_edit_terms", False):
             st.session_state.show_edit_terms = False
             st.rerun()
 
+# ======================
+# ✏ EDIT / VIEW TERMS & CONDITIONS (Admin & Buyer)
+# ======================
+st.markdown("---")
+
+# Show different button based on role
+if st.session_state.role == "admin":
+    if st.button("📝 Edit Terms & Conditions"):
+        st.session_state.show_edit_terms = True
+elif st.session_state.role == "buyer":
+    if st.button("📄 View Terms & Conditions"):
+        st.session_state.show_edit_terms = True
 
 if st.button("📅 Generate PDF Quotation") and output_data:
     # Block generating PDF until Terms & Conditions are reviewed
@@ -1897,6 +1936,7 @@ if st.button("📅 Generate PDF Quotation") and output_data:
                 key=f"download_pdf_{data_hash}"
 
             )
+
 
 
 
