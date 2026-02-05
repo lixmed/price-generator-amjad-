@@ -338,7 +338,7 @@ def get_gsheet_connection():
         sa = gspread.service_account_from_dict(st.secrets["gcp_service_account"], scopes=scopes)
         
         # Open by spreadsheet ID
-        spreadsheet = sa.open_by_key("1rwpFuHgWZbV7FxoC6dVDIdwUb1ak7J8HSyz8zXl-jmM")
+        spreadsheet = sa.open_by_key("1ewjGt576LjSgeoRLGKoc_LxfnnWlai_ArOv1ZeyXEgk")
 
         # Try to get the worksheet
         try:
