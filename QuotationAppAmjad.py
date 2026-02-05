@@ -43,14 +43,14 @@ def init_session_state():
             "value": """1. Prices are in Saudi Riyal (SAR).
             2. Prices include 14% Value Added Tax (VAT), calculated separately.
             3. Prices also cover delivery, installation, and assembly.
-            4. <b>Financial Offer Validity:</b> 30 days from the submission date.
-            5. <b>Delivery period:</b> 21 to 30 days from the issuance of a purchase order (PO), advance payment and selection of preferred colors.
+            4. Financial Offer Validity: 30 days from the submission date.
+            5. Delivery period: 21 to 30 days from the issuance of a purchase order (PO), advance payment and selection of preferred colors.
             6. Goods will be stored free of charge in the company's warehouse for 7 days from the final delivery date. However, an additional fee of 1% of the total order value, up to a maximum of 5%, will be added weekly thereafter.
-            7. <b>Delivery Locations:</b> Unit No.4, Building No. 2981, Al Ihsaa st., Ar Rabwa, Riyadh, KSA 12813
+            7. Delivery Locations: Unit No.4, Building No. 2981, Al Ihsaa st., Ar Rabwa, Riyadh, KSA 12813
             8. Our technical offer fully complies with the requested product specifications.
-            9. <b>Warranty:</b> All products are covered by a 12-month warranty starting from the final delivery and installation date, guaranteeing against manufacturer defects, parts failure due to installation errors, and missing or incorrect parts.
-            10. <b>Maintenance service and maximum response time:</b> will be within 48 - 72 hours from the notification time via email.
-            11. <b>Terms of payment:</b> 50% down payment and 50% upon confirmation of successful completion, handover of goods, original invoice, and delivery note to headquarters."""
+            9. Warranty: All products are covered by a 12-month warranty starting from the final delivery and installation date, guaranteeing against manufacturer defects, parts failure due to installation errors, and missing or incorrect parts.
+            10. Maintenance service and maximum response time: will be within 48 - 72 hours from the notification time via email.
+            11. Terms of payment: 50% down payment and 50% upon confirmation of successful completion, handover of goods, original invoice, and delivery note to headquarters."""
         },
         "history": [],  
         "history_loaded": False,         
@@ -1489,7 +1489,6 @@ def build_pdf_cached(data_hash, final_total, company_details,
         company_lines.append(f"<b><font color=\"maroon\">Contact phone number:+966 55 063 2094")
 
         # Only show Address if not empty
-
 
         # Add spacing
         company_lines.append("")
