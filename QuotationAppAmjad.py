@@ -405,7 +405,7 @@ def get_sheet_data(_sheet):
         # Create DataFrame manually
         df = pd.DataFrame(data_rows, columns=headers)
         
-        # Define expected columns (must match your sheet headers EXACTLY)
+        # Define expected columns
         expected_cols = [
             "Drawing",           # A
             "Image Featured",    # B 
@@ -426,9 +426,7 @@ def get_sheet_data(_sheet):
             return pd.DataFrame()
         
         # 🔧 Filter out COMPLETELY empty rows (where all cells are empty)
-        # Create a mask where at least one cell has content
-        has_content = df.apply(lambda row: any(str(val).strip() != '' for val in row), axis=1)
-        df = df[has_content].copy()
+
         
         # 🔧 Now filter: keep only rows with valid Title
         df['Title'] = df['Title'].astype(str).str.strip()
@@ -576,8 +574,6 @@ def display_product_image(c2, prod, image_url, width=100):
                 st.caption(f"Raw: {str(image_url)[:50]}")
 
 
-
-
 def display_admin_preview(image_url, caption="Image Preview"):
     """Display image preview in admin panel"""
     if image_url:
@@ -676,6 +672,7 @@ def compute_product_lookups(df_hash):
     desc_map = {}
     image_map = {}
     code_map = {}
+    size_map = {}
     title_to_key_map = {}  # Map: display_name -> unique_key
     
     for idx, row in df.iterrows():
@@ -699,7 +696,7 @@ def compute_product_lookups(df_hash):
         desc_val = row.get('Content', '')
         desc_map[display_name] = '' if desc_val in ['nan', 'NaN', 'None'] else str(desc_val)
 
-        size_map = {}
+     
         # Inside the loop over df rows:
         size_val = row.get('Size (mm)', '')
         size_map[display_name] = '' if size_val in ['nan', 'NaN', 'None', ''] else str(size_val)
@@ -1116,6 +1113,7 @@ company_details = st.session_state.company_details
 
 price_map = lookups['price_map']
 desc_map = lookups['desc_map']
+size_map = lookups['size_map']
 image_map = lookups['image_map']
 code_map = lookups['code_map']
 reverse_code_map = lookups['reverse_code_map']
@@ -1271,7 +1269,7 @@ for idx in st.session_state.row_indices:
         output_data.append({
             "Item": prod,
             "Description": desc_map.get(prod, ""),          
-            "Size (mm)": lookups['size_map'].get(prod, ""), 
+            "Size (mm)": size_map.get(prod, ""), 
             "Color": user_color,                            
             "Image": original_image_urls,
             "Quantity": qty,
