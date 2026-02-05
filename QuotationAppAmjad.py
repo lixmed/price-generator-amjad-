@@ -1486,6 +1486,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
         company_lines.append(f"<b><font color=\"maroon\">Prepared Email:</font></b> {company_details.get('prepared_by_email', '')}")
         company_lines.append(f"<b><font color=\"maroon\">Contact person:</font></b> Amr Ramzy")
         company_lines.append(f"<b><font color=\"maroon\">Contact person email:</font></b> amr.ramzy@amjadofficefurniture.com")
+        company_lines.append(f"<b><font color=\"maroon\">Contact phone number:+966 55 063 2094")
 
         # Only show Address if not empty
 
