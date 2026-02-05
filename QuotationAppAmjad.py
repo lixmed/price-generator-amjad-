@@ -1488,9 +1488,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
         company_lines.append(f"<b><font color=\"maroon\">Contact person email:</font></b> amr.ramzy@amjadofficefurniture.com")
 
         # Only show Address if not empty
-        address = company_details.get('address', '').strip()
-        if address:
-            company_lines.append(f"<b><font color=\"maroon\">Address:</font></b> {address}")
+
 
         # Add spacing
         company_lines.append("")
@@ -1501,6 +1499,9 @@ def build_pdf_cached(data_hash, final_total, company_details,
         company_lines.append(f"<b><font color=\"black\">Contact Person:</font></b> {company_details.get('contact_person', '')}")
         company_lines.append(f"<b><font color=\"black\">Email:</font></b> {company_details.get('contact_email', '')}")
         company_lines.append(f"<b><font color=\"black\">Phone:</font></b> {company_details.get('contact_phone', '')}")
+        address = company_details.get('address', '').strip()
+        if address:
+            company_lines.append(f"<b><font color=\"Black\">Address:</font></b> {address}")
 
         # Join all lines
         details = "<para align=\"left\"><font size=14>" + "<br/>".join(company_lines) + "</font></para>"
