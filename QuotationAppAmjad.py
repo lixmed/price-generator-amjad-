@@ -1424,10 +1424,13 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # ======================
         # Header & Footer Function
         # ======================
-        def header_footer(canvas, doc):
+        # ======================
+        # First Page: Header + Footer
+        # ======================
+        def first_page(canvas, doc):
             canvas.saveState()
 
-            # === Header ===
+            # === Header (only on first page) ===
             if hdr_path and os.path.exists(hdr_path):
                 img = PILImage.open(hdr_path)
                 w, h = img.size
@@ -1443,7 +1446,41 @@ def build_pdf_cached(data_hash, final_total, company_details,
                     mask='auto'
                 )
 
-            # === Footer ===
+            # === Footer (on all pages) ===
+            footer_y = 0
+            if ftr_path and os.path.exists(ftr_path):
+                img = PILImage.open(ftr_path)
+                w, h = img.size
+                page_w = doc.width + doc.leftMargin + doc.rightMargin
+                footer_h = page_w * (h / w)
+                canvas.drawImage(
+                    ftr_path,
+                    x=0,
+                    y=0,
+                    width=page_w,
+                    height=footer_h,
+                    preserveAspectRatio=True,
+                    mask='auto'
+                )
+                footer_y = footer_h
+
+            # === Page Number ===
+            canvas.setFont('Helvetica', 10)
+            canvas.drawRightString(
+                doc.width + doc.leftMargin,
+                footer_y + 15,
+                str(canvas.getPageNumber())
+            )
+
+            canvas.restoreState()
+
+        # ======================
+        # Later Pages: Footer Only
+        # ======================
+        def later_pages(canvas, doc):
+            canvas.saveState()
+
+            # === Footer only (no header) ===
             footer_y = 0
             if ftr_path and os.path.exists(ftr_path):
                 img = PILImage.open(ftr_path)
@@ -1486,7 +1523,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
         company_lines.append(f"<b><font color=\"maroon\">Prepared Email:</font></b> {company_details.get('prepared_by_email', '')}")
         company_lines.append(f"<b><font color=\"maroon\">Contact person:</font></b> Amr Ramzy")
         company_lines.append(f"<b><font color=\"maroon\">Contact person email:</font></b> amr.ramzy@amjadofficefurniture.com")
-        company_lines.append(f"<b><font color=\"maroon\">Contact phone number:+966 55 063 2094")
+        company_lines.append(f"<b><font color=\"maroon\">Contact phone number:</font></b> +966 55 063 2094")
 
         # Only show Address if not empty
 
@@ -1740,7 +1777,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # Build PDF
         # ======================
         try:
-            doc.build(elems, onFirstPage=header_footer, onLaterPages=header_footer)
+            doc.build(elems, onFirstPage=first_page, onLaterPages=later_pages)
         except Exception as e:
             print(f"Error building PDF: {e}")
             raise
