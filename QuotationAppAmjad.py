@@ -83,6 +83,7 @@ def load_users_from_sheet():
             data.append(dict(zip(headers, row)))
         users = {}
         for row in data:
+            name = str(row.get("Name", "")).strip()
             email = str(row.get("Email", "")).strip().lower()
             password = str(row.get("Password", "")).strip()
             role = str(row.get("Role", "")).strip()
@@ -92,6 +93,7 @@ def load_users_from_sheet():
             username = email.split("@")[0]
             users[email] = {
                 "username": username,
+                "full_name": name,        
                 "password": password,
                 "role": role
             }
@@ -208,13 +210,9 @@ def get_history_sheet():
     # Cache the connection to the history Google Sheet
     # Returns the first worksheet of "Amjad's history" spreadsheet
     try:
-        # Create service account connection using credentials from secrets
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
-        
-        # Open the history spreadsheet by name
-        sh = gc.open("Amjad's history")  # ← Spreadsheet name
-        
-        # Return the first worksheet
+    
+        sh = gc.open("Amjad's history")  
         return sh.sheet1
         
     except gspread.SpreadsheetNotFound:
@@ -602,6 +600,7 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.user_email = email
                 st.session_state.username = user["username"]
+                st.session_state.name = user["full_name"]
                 st.session_state.role = user["role"]
                 st.rerun()
             else:
@@ -964,7 +963,7 @@ if st.session_state.get('form_submitted', False):
                 "contact_phone": "",
                 "address": "",
                 # Keep defaults from last quote
-                "prepared_by": st.session_state.username,
+                "prepared_by": st.session_state.name,
                 "prepared_by_email": st.session_state.user_email,
                 "current_date": datetime.now().strftime("%A, %B %d, %Y"),
                 "valid_till": (datetime.now() + timedelta(days=10)).strftime("%A, %B %d, %Y"),
@@ -1046,7 +1045,7 @@ if not st.session_state.form_submitted:
         )
 
         # Prepared by (auto-filled)
-        prepared_by = st.session_state.username
+        prepared_by = st.session_state.name
         prepared_by_email = st.session_state.user_email
 
         # Date fields
@@ -1422,7 +1421,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
         )
 
         # ======================
-        # Header & Footer Function
+        # Header & Footer Functions
         # ======================
         # ======================
         # First Page: Header + Footer
@@ -1519,15 +1518,15 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # Always required
         company_lines.append(f"<b><font color=\"maroon\">Date:</font></b> {company_details.get('current_date', '')}")
         company_lines.append(f"<b><font color=\"maroon\">Valid Till:</font></b> {company_details.get('valid_till', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Prepared By:</font></b> {company_details.get('prepared_by', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Prepared Email:</font></b> {company_details.get('prepared_by_email', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Contact person:</font></b> Amr Ramzy")
-        company_lines.append(f"<b><font color=\"maroon\">Contact person email:</font></b> amr.ramzy@amjadofficefurniture.com")
-        company_lines.append(f"<b><font color=\"maroon\">Contact phone number:</font></b> +966 55 063 2094")
+        company_lines.append(f"<b><font color=\"maroon\">Quotation Validity:</font></b> {company_details.get('validation_days', '')} days")
+        company_lines.append(f"<b><font color=\"maroon\">Contact Person:</font></b> {company_details.get('prepared_by', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Email:</font></b> {company_details.get('prepared_by_email', '')}")
+        company_lines.append(f"<b><font color=\"maroon\">Phone Number:</font></b> +966 55 063 2094")
 
         # Only show Address if not empty
 
         # Add spacing
+        company_lines.append("")
         company_lines.append("")
 
         # Prepared by section
@@ -1539,9 +1538,12 @@ def build_pdf_cached(data_hash, final_total, company_details,
         address = company_details.get('address', '').strip()
         if address:
             company_lines.append(f"<b><font color=\"Black\">Address:</font></b> {address}")
-
+        company_lines.append("")
+        company_lines.append("")
+        company_lines.append("")
         # Join all lines
         details = "<para align=\"left\"><font size=14>" + "<br/>".join(company_lines) + "</font></para>"
+
         elems.append(Paragraph(details, aligned_style))
 
         # ======================
@@ -1549,7 +1551,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # ======================
         # elems.append(PageBreak())
 
-        # ======================
+        # ======================ِ
         # Items Table
         # ======================
         product_table_data = [["Ser.", "Image", "Product", "Color", "Description", "QTY", "Price", "Total"]]
@@ -1588,7 +1590,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
                 total_img_width = 210  # Leave 5pt padding on each side / edit this if you wanted another image 
                 num_images = min(2 if USE_TWO_IMAGES else 1, len(image_paths))
                 img_width = (total_img_width - 10) / num_images  # 10pt gap between images
-                img_height = 155  # Good height for A3 row
+                img_height = 135  # Good height for A3 row
 
                 # Create image objects
                 img_flowables = []
@@ -1637,7 +1639,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
             # Extract raw fields
             desc = r.get('Description', '').strip()
             size = r.get('Size (mm)', '').strip()
-            user_color = r.get('Color', 'Choose color').strip()
+            user_color = r.get('Color', 'Choose from In-Stock Colors').strip()
 
             # Build combined description: Description + Size
             desc_parts = []
@@ -1693,7 +1695,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 11),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.maroon),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),           # Center header text
             ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),          # Vertically center header
             ('TOPPADDING', (0, 0), (-1, 0), 9),            # Add padding for visual centering
@@ -1892,6 +1894,33 @@ if st.session_state.get("show_edit_terms", False):
             st.session_state.terms_reviewed = terms_reviewed
             st.session_state.show_edit_terms = False
             st.rerun()
+st.markdown("---")
+# ======================
+# 📅 Validation Period Input
+# ======================
+st.markdown("### ⏳ Quotation Validity")
+col_a, col_b = st.columns([1, 2])
+
+with col_a:
+    # Get current validation days from session or default to 30
+    current_days = st.session_state.company_details.get("validation_days", 30)
+    validation_days = st.number_input(
+        "Validation Period (days)",
+        min_value=1,
+        max_value=365,
+        value=int(current_days),
+        help="Number of days the quotation remains valid from today"
+    )
+
+# Calculate valid_till date
+valid_till_date = (datetime.now() + timedelta(days=validation_days)).strftime("%A, %B %d, %Y")
+
+# Update company_details in session state
+st.session_state.company_details["validation_days"] = validation_days
+st.session_state.company_details["valid_till"] = valid_till_date
+
+with col_b:
+    st.info(f"✅ Quotation will be valid until: **{valid_till_date}**")
 
 # ======================
 # ✏ EDIT / VIEW TERMS & CONDITIONS (Admin & Buyer)
