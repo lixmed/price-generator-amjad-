@@ -1533,7 +1533,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
         elems.append(Paragraph(preparer_details, aligned_style))
 
         # Part 2: Project Name (Right Aligned)
-        project_name_text = f"<b><font color=\"maroon\">{company_details.get('project_name', '')}</font></b>"
+        project_name_text = f"<font color=\"white\">ddddddddddddddddddddl</font><b><font color=\"maroon\">{company_details.get('project_name', '')}</font></b>"
         project_details = f"<para align=\"center\"><font size=14>{project_name_text}</font></para>"
         elems.append(Paragraph(project_details, aligned_style))
 
