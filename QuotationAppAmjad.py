@@ -1121,6 +1121,14 @@ code_options = ["-- Select --"] + lookups['code_options']
 
 st.markdown(f" Quotation for {company_details['company_name']}")
 
+# Project Name input (after company details form submission)
+project_name = st.text_input(
+    "🏗 Project Name",
+    value=st.session_state.company_details.get("project_name", ""),
+    placeholder="e.g., Riyadh Office Renovation"
+)
+st.session_state.company_details["project_name"] = project_name.strip()
+
 # Product selection headers
 cols = st.columns([2, 1.5, 2, 1.5, 2, 2, 2, 2, 0.5])
 headers = ["Product", "Code", "Image", "Color", "Price", "Quantity", "Discount %", "Total", "Clr"]
@@ -1232,7 +1240,7 @@ for idx in st.session_state.row_indices:
 
         # Initialize only if not exists AND no widget has claimed it yet
         if color_key not in st.session_state:
-            st.session_state[color_key] = "Choose color"
+            st.session_state[color_key] = "Choose from In-Stock Colors"
 
         if prod != "-- Select --":
             user_color = c4.text_input(  
@@ -1243,7 +1251,7 @@ for idx in st.session_state.row_indices:
             )
         else:
             c4.write("—")
-            user_color = "Choose color"
+            user_color = "Choose from In-Stock Colors"
 
         valid_discount = 0.0 if discount > 20 else discount
         if discount > 20:
@@ -1511,46 +1519,43 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # Company Details
         # ======================
         # Build company details dynamically
-        company_lines = [
-         
-        ]
+        
+        # Part 1: Preparer Details (Left Aligned)
+        preparer_lines = []
+        preparer_lines.append(f"<font color=\"white\">dddddddddddl</font><b><font color=\"maroon\">Date:</font></b> {company_details.get('current_date', '')}")
+        preparer_lines.append(f"<font color=\"white\">dddddddd</font><b><font color=\"maroon\">Valid Till:</font></b> {company_details.get('valid_till', '')}")
+        preparer_lines.append(f"<font color=\"white\"></font><b><font color=\"maroon\">Quotation Validity:</font></b> {company_details.get('validation_days', '30')} days")
+        preparer_lines.append(f"<font color=\"white\">dd</font><b><font color=\"maroon\">Contact Person:</font></b> {company_details.get('prepared_by', '')}")
+        preparer_lines.append(f"<font color=\"white\">ddddddddddl</font><b><font color=\"maroon\">Email:</font></b> {company_details.get('prepared_by_email', '')}")
+        preparer_lines.append(f"<font color=\"white\">ddl</font><b><font color=\"maroon\">Phone Number:</font></b> +966 55 063 2094")
+        
+        preparer_details = "<para align=\"left\"><font size=14>" + "<br/>".join(preparer_lines) + "</font></para>"
+        elems.append(Paragraph(preparer_details, aligned_style))
 
-        # Always required
-        company_lines.append(f"<b><font color=\"maroon\">Date:</font></b> {company_details.get('current_date', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Valid Till:</font></b> {company_details.get('valid_till', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Quotation Validity:</font></b> {company_details.get('validation_days', '')} days")
-        company_lines.append(f"<b><font color=\"maroon\">Contact Person:</font></b> {company_details.get('prepared_by', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Email:</font></b> {company_details.get('prepared_by_email', '')}")
-        company_lines.append(f"<b><font color=\"maroon\">Phone Number:</font></b> +966 55 063 2094")
+        # Part 2: Project Name (Right Aligned)
+        project_name_text = f"<b><font color=\"maroon\">{company_details.get('project_name', '')}</font></b>"
+        project_details = f"<para align=\"center\"><font size=14>{project_name_text}</font></para>"
+        elems.append(Paragraph(project_details, aligned_style))
 
-        # Only show Address if not empty
-
-        # Add spacing
-        company_lines.append("")
-        company_lines.append("")
-
-        # Prepared by section
-
-        company_lines.append(f"<b><font color=\"black\">Company:</font></b> {company_details.get('company_name', '')}")
-        company_lines.append(f"<b><font color=\"black\">Contact Person:</font></b> {company_details.get('contact_person', '')}")
-        company_lines.append(f"<b><font color=\"black\">Email:</font></b> {company_details.get('contact_email', '')}")
-        company_lines.append(f"<b><font color=\"black\">Phone:</font></b> {company_details.get('contact_phone', '')}")
+        # Part 3: Client Details (Left Aligned)
+        client_lines = []
+        client_lines.append(f"<font color=\"white\">ddddddll</font><b><font color=\"black\">Company:</font></b> {company_details.get('company_name', '')}")
+        client_lines.append(f"<font color=\"white\">dll</font><b><font color=\"black\">Contact Person:</font></b> {company_details.get('contact_person', '')}")
+        client_lines.append(f"<font color=\"white\">dddddddddlll</font><b><font color=\"black\">Email:</font></b> {company_details.get('contact_email', '')}")
+        client_lines.append(f"<font color=\"white\">ddl</font><b><font color=\"black\">Phone Number:</font></b> {company_details.get('contact_phone', '')}")
+        
         address = company_details.get('address', '').strip()
         if address:
-            company_lines.append(f"<b><font color=\"Black\">Address:</font></b> {address}")
-        company_lines.append("")
-        company_lines.append("")
-        company_lines.append("")
-        # Join all lines
-        details = "<para align=\"left\"><font size=14>" + "<br/>".join(company_lines) + "</font></para>"
-
-        elems.append(Paragraph(details, aligned_style))
+            client_lines.append(f"<font color=\"white\">dddddddll</font><b><font color=\"Black\">Address:</font></b> {address}")
+            
+        client_details = "<para align=\"left\"><font size=14>" + "<br/>".join(client_lines) + "</font></para>"
+        elems.append(Paragraph(client_details, aligned_style))
+        elems.append(Spacer(1, 12))
 
         # ======================
         # Force items table to start on a new page
         # ======================
         # elems.append(PageBreak())
-
         # ======================ِ
         # Items Table
         # ======================
@@ -1722,28 +1727,40 @@ def build_pdf_cached(data_hash, final_total, company_details,
         vat = total * 0.14
         grand_total = total + vat
 
-        summary_data = [
-            ["Subtotal", f"{subtotal:.2f}"],
-        ]
-        if discount_amount > 0:
-            summary_data.append(["Discount", f"{discount_amount:.2f}"])
-        summary_data.append(["Net Total", f"{total:.2f}"])
-        summary_data.append(["VAT (14%)", f"{vat:.2f}"])
-        summary_data.append(["Grand Total", f"{grand_total:.2f}"])
+        # Calculate discount percentage
+        discount_percentage = (discount_amount / subtotal * 100) if subtotal > 0 else 0.0
 
-        summary_col_widths = [total_table_width - 120, 120]
+        summary_data = [
+            ["Total", f"{subtotal:.2f} SAR"],
+        ]
+
+        # Add discount rows only if there's a discount
+        if discount_amount > 0:
+            summary_data.append([
+                f"Special Discount ({discount_percentage:.0f}%)", 
+                f"{discount_amount:.2f} SAR"
+            ])
+            summary_data.append([
+                "Total after discount", 
+                f"{total:.2f} SAR"
+            ])
+
+        # Add VAT and Grand Total (always shown)
+        summary_data.append(["VAT (14%)", f"{vat:.2f} SAR"])
+        summary_data.append(["Grand Total", f"{grand_total:.2f} SAR"])
+
+        summary_col_widths = [total_table_width - 140, 140]
         summary_table = Table(summary_data, colWidths=summary_col_widths)
         summary_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, -2), 'Helvetica'),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),  # Bold for Grand Total row
             ('FONTSIZE', (0, 0), (-1, -1), 12),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),         # Vertical center
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 12),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
             ('GRID', (0, 0), (-1, -1), 1.0, colors.black),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-            ('TEXTCOLOR', (1, 1), (1, 1), colors.red) if discount_amount > 0 else ('TEXTCOLOR', (1, 1), (1, 1), colors.black),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),  # Highlight Grand Total row
         ]))
         elems.append(summary_table)
 
