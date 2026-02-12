@@ -35,6 +35,7 @@ def init_session_state():
         "form_submitted": False,
         "company_details": {},
         "rows": 1,
+        "section_rows": [],
         "row_indices": [0],
         "selected_products": {},
         "sheet_data": None,
@@ -1289,10 +1290,65 @@ for idx in st.session_state.row_indices:
         for col in [c2, c3, c4, c5, c6]:
             col.write("—")
 
-# Add product button
-if st.button("➕ Add Product"):
-    st.session_state.row_indices.append(max(st.session_state.row_indices, default=-1) + 1)
-    st.rerun()
+# ========== Product Selection Interface ==========
+# ... [existing code with product rows loop] ...
+
+# ← ADD THIS CODE HERE (after the product loop ends)
+st.markdown("---")
+
+# Add section row UI
+col_add_prod, col_add_section = st.columns(2)
+
+with col_add_prod:
+    if st.button("➕ Add Product"):
+        st.session_state.row_indices.append(max(st.session_state.row_indices, default=-1) + 1)
+        st.rerun()
+
+with col_add_section:
+    if st.button("🔖 Add Section Header"):
+        new_id = len(st.session_state.section_rows)
+        st.session_state.section_rows.append({
+            'id': new_id,
+            'position': 'After Header',
+            'text': f'New Section',
+            'show': True
+        })
+        st.rerun()
+
+# Display section editors
+if st.session_state.section_rows:
+    st.markdown("### 📌 Section Headers")
+    for i, sec in enumerate(st.session_state.section_rows[:]):  # Copy to avoid modification during iteration
+        with st.expander(f"📌 {sec['text']}", expanded=i == len(st.session_state.section_rows) - 1):
+            col_a, col_b, col_c = st.columns([3, 2, 1])
+            
+            with col_a:
+                new_text = st.text_input("Title", sec['text'], key=f"sec_text_{i}", label_visibility="collapsed")
+            
+            with col_b:
+                # Build position options
+                positions = ['After Header']
+                for row_idx in st.session_state.row_indices:
+                    positions.append(f'After Product {row_idx + 1}')
+                
+                current_pos = sec['position']
+                if current_pos not in positions:
+                    current_pos = 'After Header'
+                
+                new_pos = st.selectbox("Position", positions, 
+                                     index=positions.index(current_pos),
+                                     key=f"sec_pos_{i}", label_visibility="collapsed")
+            
+            with col_c:
+                if st.button("🗑", key=f"del_sec_{i}"):
+                    st.session_state.section_rows.remove(sec)
+                    st.rerun()
+            
+            # Update section
+            st.session_state.section_rows[i]['text'] = new_text
+            st.session_state.section_rows[i]['position'] = new_pos
+            st.session_state.section_rows[i]['show'] = bool(new_text.strip())
+
 
 # Calculate totals
 st.markdown("---")
@@ -1564,22 +1620,64 @@ def build_pdf_cached(data_hash, final_total, company_details,
 
         # Original total: 30 + 170 + 90 + 80 + 220 + 30 + 60 + 60 = 730
         # Remove "Color" (80) → redistribute: Image +50 → 220    , Description +30 → 250
-        col_widths = [30, 220, 80 ,60, 200, 40, 50, 50]  
-        #col_widths = [30, 320, 90, 150, 30, 60, 60]  # Sum = 730 pt / Use this when you need two pics 
+        # ======================
+        # Items Table with Section Headers (FIXED)
+        # ======================
+        product_table_data = [["Ser.", "Image", "Product", "Color", "Description", "QTY", "Price", "Total"]]
+        temp_files = []
+
+        col_widths = [30, 220, 80, 60, 200, 40, 50, 50]
         total_table_width = sum(col_widths)
 
+        # Helper: create a *full-width* section row (1 cell spanning all 8 columns)
+        def create_section_row(text):
+            """Return a row where only the first cell has content, and it spans all columns"""
+            section_style = ParagraphStyle(
+                'SectionHeader',
+                fontSize=12,
+                leading=16,
+                alignment=1,  # center
+                textColor=colors.maroon,
+                fontName='Helvetica-Bold',
+                spaceBefore=6,
+                spaceAfter=6
+            )
+            return [Paragraph(text, section_style)] + [''] * 7  # still 8 cells, but only first has content
+
+        # Track inserted sections
+        inserted_sections = set()
+
+        # First: add section rows positioned after header
+        for sec_idx, section in enumerate(st.session_state.section_rows):
+            if section.get('show') and section.get('position') == 'After Header':
+                product_table_data.append(create_section_row(section['text']))
+                inserted_sections.add(sec_idx)
+
+        # Now add product rows, inserting sections before appropriate products
         for idx, r in enumerate(data, start=1):
-            # Get all image URLs (comma-separated in session state)
+            # Insert section before this product if positioned after previous product
+            for sec_idx, section in enumerate(st.session_state.section_rows):
+                if sec_idx in inserted_sections:
+                    continue
+                if section.get('show'):
+                    pos = section.get('position', '')
+                    if pos.startswith('After Product '):
+                        try:
+                            target_row_num = int(pos.split('After Product ')[1])
+                            if idx == target_row_num + 1:
+                                product_table_data.append(create_section_row(section['text']))
+                                inserted_sections.add(sec_idx)
+                        except:
+                            pass
+
+          
             image_urls = r.get("Image", "")
             image_paths = []
-
-            # Process multiple images (if available)
+            
             if image_urls:
-                # Split by pipe character (used as separator in session state)
                 urls = [url.strip() for url in image_urls.split("|") if url.strip()]
-                
                 max_images = 2 if USE_TWO_IMAGES else 1
-                for url in urls[:max_images]:  # Use 1 or 2 based on toggle 
+                for url in urls[:max_images]:
                     try:
                         download_url = convert_google_drive_url_for_storage(url)
                         temp_img_path = download_image_for_pdf(download_url, max_size=(300, 300))
@@ -1589,15 +1687,12 @@ def build_pdf_cached(data_hash, final_total, company_details,
                     except Exception as e:
                         print(f"Error loading image: {e}")
 
-            # Create image element
             if image_paths:
-                # Define image dimensions
-                total_img_width = 210  # Leave 5pt padding on each side / edit this if you wanted another image 
+                total_img_width = 210
                 num_images = min(2 if USE_TWO_IMAGES else 1, len(image_paths))
-                img_width = (total_img_width - 10) / num_images  # 10pt gap between images
-                img_height = 135  # Good height for A3 row
-
-                # Create image objects
+                img_width = (total_img_width - 10) / num_images
+                img_height = 135
+                
                 img_flowables = []
                 for path in image_paths[:2]:
                     img = RLImage(path)
@@ -1606,23 +1701,12 @@ def build_pdf_cached(data_hash, final_total, company_details,
                     img.hAlign = 'CENTER'
                     img.vAlign = 'MIDDLE'
                     img_flowables.append(img)
-
-                # If only one image, center it
+                
                 if len(img_flowables) == 1:
-                    img_table = Table(
-                        [[img_flowables[0]]],
-                        colWidths=[total_img_width],
-                        hAlign='CENTER'
-                    )
-                else:  # Two images
-                    img_table = Table(
-                        [img_flowables],  # Single row with two images
-                        colWidths=[img_width, img_width],
-                        hAlign='CENTER',
-                        spaceAfter=0
-                    )
-
-                # Style the table (no borders, centered)
+                    img_table = Table([[img_flowables[0]]], colWidths=[total_img_width], hAlign='CENTER')
+                else:
+                    img_table = Table([img_flowables], colWidths=[img_width, img_width], hAlign='CENTER', spaceAfter=0)
+                
                 img_table.setStyle(TableStyle([
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -1631,92 +1715,85 @@ def build_pdf_cached(data_hash, final_total, company_details,
                     ('TOPPADDING', (0, 0), (-1, -1), 0),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
                 ]))
-
-                # Wrap in KeepInFrame to prevent overflow
                 img_element = KeepInFrame(250, 190, [img_table], mode='shrink')
             else:
-                img_element = Paragraph("No Image", ParagraphStyle('NoImage', 
-                    alignment=1, 
-                    fontSize=10, 
-                    textColor=colors.grey))
+                img_element = Paragraph("No Image", ParagraphStyle('NoImage', alignment=1, fontSize=10, textColor=colors.grey))
 
-            # Build rich description with bold labels
-            # Extract raw fields
             desc = r.get('Description', '').strip()
             size = r.get('Size (mm)', '').strip()
             user_color = r.get('Color', 'Choose from In-Stock Colors').strip()
-
-            # Build combined description: Description + Size
+            
             desc_parts = []
             if desc:
                 desc_parts.append(desc)
             if size:
                 desc_parts.append(f"Size: {size}")
             full_desc = "<br/>".join(desc_parts) if desc_parts else "—"
-
-            # Create Paragraphs
-            desc_style = ParagraphStyle(
-                'Desc',
-                fontSize=11,
-                leading=15,
-                alignment=1,  # center
-                wordWrap='CJK'
-            )
+            
+            desc_style = ParagraphStyle('Desc', fontSize=11, leading=15, alignment=1, wordWrap='CJK')
             desc_para = Paragraph(full_desc, desc_style)
-
             styleN = ParagraphStyle('Center', fontSize=10, leading=17, alignment=1)
             color_para = Paragraph(user_color, styleN)
-            # Adjust the description style for better wrapping
-            desc_style = ParagraphStyle(
-                'Desc', 
-                fontSize=11, 
-                leading=15,  # Slightly reduced line spacing
-                alignment=1,  # center alignment
-                wordWrap='CJK'  # Better word wrapping
-            )
-            desc_para = Paragraph(full_desc, desc_style)
-
-            styleN = ParagraphStyle('Center', fontSize=10, leading=17, alignment=1)
 
             product_table_data.append([
                 str(idx),
                 img_element,
                 Paragraph(str(r.get('Item', '')), styleN),
-                color_para,     
-                desc_para,     
+                color_para,
+                desc_para,
                 str(r['Quantity']),
                 f"{r['Price per item']:.2f}",
                 f"{r['Total price']:.2f}"
             ])
 
-        # Create table
-        product_table = Table(
-            product_table_data,
-            colWidths=col_widths,
-            rowHeights=[25] + [190] * (len(product_table_data) - 1)
-        )
+                # Create table
+        product_table = Table(product_table_data, colWidths=col_widths)
+
+        # Apply styles
         product_table.setStyle(TableStyle([
-            # Header row
+            # Header
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 11),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('BACKGROUND', (0, 0), (-1, 0), colors.maroon),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),           # Center header text
-            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),          # Vertically center header
-            ('TOPPADDING', (0, 0), (-1, 0), 9),            # Add padding for visual centering
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, 0), 9),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
 
-            # Body rows
+            # Body
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('ALIGN', (0, 1), (-1, -1), 'CENTER'),          # Center all cell content
-            ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),         # Vertical center
-            ('TOPPADDING', (0, 1), (-1, -1), 8),            # Better vertical spacing
+            ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
 
             # Grid
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
+
+        # 🔑 CRITICAL: Merge section rows so they span all columns
+        merge_commands = []
+        for row_idx, row in enumerate(product_table_data):
+            if row_idx == 0:
+                continue  # skip header
+            # Check if first cell is a Paragraph with SectionHeader style
+            first_cell = row[0]
+            if isinstance(first_cell, Paragraph) and hasattr(first_cell, 'style') and first_cell.style.name == 'SectionHeader':
+                # Span all 8 columns: (0, row_idx) to (7, row_idx)
+                merge_commands.append(('SPAN', (0, row_idx), (7, row_idx)))
+                merge_commands.append(('BACKGROUND', (0, row_idx), (7, row_idx), colors.white))
+                merge_commands.append(('FONTNAME', (0, row_idx), (7, row_idx), 'Helvetica-Bold'))
+                merge_commands.append(('FONTSIZE', (0, row_idx), (7, row_idx), 12))
+                merge_commands.append(('TEXTCOLOR', (0, row_idx), (7, row_idx), colors.maroon))
+                merge_commands.append(('ALIGN', (0, row_idx), (7, row_idx), 'CENTER'))
+                merge_commands.append(('VALIGN', (0, row_idx), (7, row_idx), 'MIDDLE'))
+                merge_commands.append(('TOPPADDING', (0, row_idx), (7, row_idx), 10))
+                merge_commands.append(('BOTTOMPADDING', (0, row_idx), (7, row_idx), 10))
+
+        if merge_commands:
+            product_table.setStyle(TableStyle(merge_commands))
         elems.append(product_table)
 
         # ======================
