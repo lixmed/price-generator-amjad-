@@ -1316,9 +1316,10 @@ with col_add_section:
         st.rerun()
 
 # Display section editors
+# Display section editors
 if st.session_state.section_rows:
     st.markdown("### 📌 Section Headers")
-    for i, sec in enumerate(st.session_state.section_rows[:]):  # Copy to avoid modification during iteration
+    for i, sec in enumerate(st.session_state.section_rows[:]):  # copy to avoid mutation
         with st.expander(f"📌 {sec['text']}", expanded=i == len(st.session_state.section_rows) - 1):
             col_a, col_b, col_c = st.columns([3, 2, 1])
             
@@ -1326,28 +1327,57 @@ if st.session_state.section_rows:
                 new_text = st.text_input("Title", sec['text'], key=f"sec_text_{i}", label_visibility="collapsed")
             
             with col_b:
-                # Build position options
+                # Position options
                 positions = ['After Header']
                 for row_idx in st.session_state.row_indices:
                     positions.append(f'After Product {row_idx + 1}')
                 
-                current_pos = sec['position']
+                current_pos = sec.get('position', 'After Header')
                 if current_pos not in positions:
                     current_pos = 'After Header'
                 
-                new_pos = st.selectbox("Position", positions, 
-                                     index=positions.index(current_pos),
-                                     key=f"sec_pos_{i}", label_visibility="collapsed")
+                new_pos = st.selectbox(
+                    "Position",
+                    positions,
+                    index=positions.index(current_pos),
+                    key=f"sec_pos_{i}",
+                    label_visibility="collapsed"
+                )
             
             with col_c:
-                if st.button("🗑", key=f"del_sec_{i}"):
-                    st.session_state.section_rows.remove(sec)
-                    st.rerun()
-            
-            # Update section
+                # Color selector (per-section)
+                color_options = {
+                    "Maroon": colors.maroon,
+                    "Black": colors.black,
+                    "Blue": colors.blue,
+                    "Green": colors.green,
+                    "Red": colors.red,
+                    "Gray": colors.gray
+                }
+                current_color_name = sec.get('color_name', 'Maroon')
+                if current_color_name not in color_options:
+                    current_color_name = 'Maroon'
+                
+                new_color_name = st.selectbox(
+                    "Color",
+                    options=list(color_options.keys()),
+                    index=list(color_options.keys()).index(current_color_name),
+                    key=f"sec_color_{i}",
+                    label_visibility="collapsed"
+                )
+                new_color = color_options[new_color_name]
+
+            # Update section in session state
             st.session_state.section_rows[i]['text'] = new_text
             st.session_state.section_rows[i]['position'] = new_pos
+            st.session_state.section_rows[i]['color_name'] = new_color_name
+            st.session_state.section_rows[i]['color'] = new_color  # store actual ReportLab color
             st.session_state.section_rows[i]['show'] = bool(new_text.strip())
+            
+            # Delete button (keep as-is)
+            if st.button("🗑", key=f"del_sec_{i}"):
+                st.session_state.section_rows.remove(sec)
+                st.rerun()
 
 
 # Calculate totals
@@ -1606,7 +1636,7 @@ def build_pdf_cached(data_hash, final_total, company_details,
             
         client_details = "<para align=\"left\"><font size=14>" + "<br/>".join(client_lines) + "</font></para>"
         elems.append(Paragraph(client_details, aligned_style))
-        elems.append(Spacer(1, 12))
+        elems.append(Spacer(1, 20))
 
         # ======================
         # Force items table to start on a new page
@@ -1630,19 +1660,19 @@ def build_pdf_cached(data_hash, final_total, company_details,
         total_table_width = sum(col_widths)
 
         # Helper: create a *full-width* section row (1 cell spanning all 8 columns)
-        def create_section_row(text):
-            """Return a row where only the first cell has content, and it spans all columns"""
+        def create_section_row(text, text_color=colors.maroon):
+            """Return a row where only the first cell has content, spanning all columns"""
             section_style = ParagraphStyle(
                 'SectionHeader',
                 fontSize=12,
                 leading=16,
                 alignment=1,  # center
-                textColor=colors.maroon,
+                textColor=text_color,
                 fontName='Helvetica-Bold',
                 spaceBefore=6,
                 spaceAfter=6
             )
-            return [Paragraph(text, section_style)] + [''] * 7  # still 8 cells, but only first has content
+            return [Paragraph(text, section_style)] + [''] * 7
 
         # Track inserted sections
         inserted_sections = set()
@@ -1650,7 +1680,8 @@ def build_pdf_cached(data_hash, final_total, company_details,
         # First: add section rows positioned after header
         for sec_idx, section in enumerate(st.session_state.section_rows):
             if section.get('show') and section.get('position') == 'After Header':
-                product_table_data.append(create_section_row(section['text']))
+                color = section.get('color', colors.maroon) 
+                product_table_data.append(create_section_row(section['text'], color)) 
                 inserted_sections.add(sec_idx)
 
         # Now add product rows, inserting sections before appropriate products
@@ -1665,7 +1696,8 @@ def build_pdf_cached(data_hash, final_total, company_details,
                         try:
                             target_row_num = int(pos.split('After Product ')[1])
                             if idx == target_row_num + 1:
-                                product_table_data.append(create_section_row(section['text']))
+                                color = section.get('color', colors.maroon)  # 👈 Get stored color
+                                product_table_data.append(create_section_row(section['text'], color))  # 👈 Pass it!
                                 inserted_sections.add(sec_idx)
                         except:
                             pass
