@@ -511,8 +511,6 @@ def get_sheet_data(_worksheets):
                 return val_str
             df['SKU'] = df['SKU'].apply(clean_sku)
         
-        st.success(f"✅ Loaded {len(df)} products from {len(_worksheets)} sheets")
-        st.write(f"📊 Columns found: {list(df.columns)}")
         return df
         
     except Exception as e:
@@ -740,8 +738,7 @@ def compute_product_lookups(df_hash):
         code = code_map.get(product, '')
         if code and code not in code_options:
             code_options.append(code)
-    
-    st.success(f"✅ Processed {len(products)} products with {len(code_options)} unique SKUs")
+
     
     return {
         'products': products,
