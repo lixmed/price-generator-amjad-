@@ -337,15 +337,15 @@ def get_gsheet_connection():
         sa = gspread.service_account_from_dict(st.secrets["gcp_service_account"], scopes=scopes)
         
         # Open by spreadsheet ID
-        spreadsheet = sa.open_by_key("1ewjGt576LjSgeoRLGKoc_LxfnnWlai_ArOv1ZeyXEgk")
+        spreadsheet = sa.open_by_key("1it2eYuRuWvj74U1FAoOWKTbrjxJN_FHPFI__lkr90FA")
 
         # Try to get the worksheet
         try:
-            worksheet = spreadsheet.worksheet("Sheet1")
-            st.write("✅ Connected to Google Sheet with Sheet1 worksheet!")
-            return worksheet
+            worksheets = spreadsheet.worksheets()
+            st.write("✅ Connected to Google Sheets with Sheet1 worksheet!")
+            return worksheets
         except gspread.exceptions.WorksheetNotFound:
-            st.error("❌ Worksheet 'Sheet1' not found.")
+            st.error("❌ Worksheets not found.")
             
             # List available worksheets for debugging
             worksheets = spreadsheet.worksheets()
@@ -380,101 +380,127 @@ def get_gsheet_connection():
 
         
 @st.cache_data(ttl=300)
-def get_sheet_data(_sheet):
+def get_sheet_data(_worksheets):
     """
-    Fetch and process sheet data using RAW gspread API
-    This ensures NO rows are dropped unexpectedly
+    Fetch and process sheet data from ALL worksheets
     """
-    if _sheet is None:
+    if _worksheets is None:
         return None
     
     try:
-        # 🔥 USE RAW API - Get ALL values directly from sheet
-        # This is more reliable than get_as_dataframe
-        all_values = _sheet.get_all_values()
+        all_data = []
         
-        if not all_values or len(all_values) < 2:
-            st.error("❌ Sheet is empty or has no data rows.")
+        # Loop through ALL worksheets
+        for ws in _worksheets:
+            all_values = ws.get_all_values()
+            if not all_values or len(all_values) < 2:
+                continue
+            
+            headers = all_values[0]
+            data_rows = all_values[1:]
+            
+            for row in data_rows:
+                # Pad row if needed
+                if len(row) < len(headers):
+                    row += [""] * (len(headers) - len(row))
+                all_data.append(dict(zip(headers, row)))
+        
+        if not all_data:
+            st.error("❌ No data found in any sheet")
             return pd.DataFrame()
         
-        # First row is headers
-        headers = all_values[0]
-        data_rows = all_values[1:]  # All remaining rows
+        # Create DataFrame
+        df = pd.DataFrame(all_data)
         
-        # Create DataFrame manually
-        df = pd.DataFrame(data_rows, columns=headers)
-        
-        # Define expected columns
-        expected_cols = [
-            "Drawing",           # A
-            "Image Featured",    # B 
-            "Title",             # C
-            "SKU",               # D
-            "Size (mm)",         # E
-            "Color",             # F
-            "Content",           # G
-            "Unit Price"         # H
-        ]
-        
-        # Take only first 8 columns and rename them
-        if len(df.columns) >= 8:
-            df = df.iloc[:, :8].copy()
-            df.columns = expected_cols
-        else:
-            st.error(f"❌ Sheet has fewer than 8 columns. Found: {len(df.columns)}")
-            return pd.DataFrame()
-        
-        # 🔧 Filter out COMPLETELY empty rows (where all cells are empty)
+        # 🔥 FLEXIBLE column mapping (matches YOUR sheet headers)
+        column_mapping = {}
+        for col in df.columns:
+            col_lower = col.lower().strip()
+            
+            # Price column
+            if col_lower in ["osama", "unit price", "price"]:
+                column_mapping[col] = "Osama"
+            
+            # Product name (YOUR sheet has "Name" not "Title")
+            elif col_lower in ["name", "title", "product name", "product"]:
+                column_mapping[col] = "Title"
+            
+            # SKU/Code column
+            elif col_lower in ["sku", "code", "product code", "item code"]:
+                column_mapping[col] = "SKU"
+            
+            # Size column
+            elif col_lower in ["size (mm)", "size", "dimensions"]:
+                column_mapping[col] = "Size (mm)"
+            
+            # Color column
+            elif col_lower in ["color", "colour"]:
+                column_mapping[col] = "Color"
+            
+            # Description/Content column
+            elif col_lower in ["content", "description", "desc", "details"]:
+                column_mapping[col] = "Content"
+            
+            # 🔥 CRITICAL: ONLY empty header '' maps to "Image Featured" (Column B)
+            # "Picture" (Column A) will be ignored or mapped to "Drawing"
+            elif col == "url":  # ← Empty header = Column B with actual image URLs
+                column_mapping[col] = "Image Featured"
+            
 
+            
+            # Drawing column (separate from Image Featured)
+            elif col_lower in ["drawing", "technical drawing", "cad", "blueprint"]:
+                column_mapping[col] = "Drawing"
         
-        # 🔧 Now filter: keep only rows with valid Title
+        df.rename(columns=column_mapping, inplace=True)
+        
+        # 🔥 CRITICAL: Handle duplicate columns - keep ONLY "Image Featured" from Column B
+        df = df.loc[:, ~df.columns.duplicated(keep='last')]
+        
+        # 🔥 Required columns (using "Title" internally)
+        required_cols = ["Title", "Osama"]
+        missing_cols = [c for c in required_cols if c not in df.columns]
+        if missing_cols:
+            st.error(f"❌ Missing required columns: {missing_cols}")
+            st.write(f"📋 Available columns: {list(df.columns)}")
+            return pd.DataFrame()
+        
+        # Keep only expected columns that exist
+        expected_cols = ["Drawing", "Image Featured", "Title", "SKU", "Size (mm)", "Color", "Content", "Osama"]
+        available_cols = [c for c in expected_cols if c in df.columns]
+        df = df[available_cols].copy()
+        
+        # 🔧 Filter out empty rows
         df['Title'] = df['Title'].astype(str).str.strip()
-        
-        # Remove rows where Title is empty or just whitespace
         valid_title_mask = df['Title'].apply(lambda x: x != '' and x.lower() not in ['nan', 'none', 'null'])
         df = df[valid_title_mask].copy()
-        
-        # Reset index to maintain clean row numbering
         df = df.reset_index(drop=True)
         
         if df.empty:
             st.error("❌ No valid products found after filtering.")
             return pd.DataFrame()
         
-        # 🔧 Clean Unit Price column - convert to numeric
-        if 'Unit Price' in df.columns:
+        # 🔧 Clean "Osama" price column
+        if 'Osama' in df.columns:
             def clean_price(val):
                 try:
-                    # Remove any currency symbols, commas, spaces
                     val_str = str(val).replace('SAR', '').replace(',', '').strip()
                     if val_str == '' or val_str.lower() in ['nan', 'none', 'null']:
                         return 0.0
                     return float(val_str)
                 except:
                     return 0.0
-            
-            df['Unit Price'] = df['Unit Price'].apply(clean_price)
+            df['Osama'] = df['Osama'].apply(clean_price)
         
-        # 🔧 Process Image URLs
-        if 'Image Featured' in df.columns:
-            def process_image_url(url):
-                url_str = str(url).strip()
-                if url_str == '' or url_str.lower() in ['nan', 'none', 'null']:
-                    return ""
-                # Convert Google Drive URLs
-                return convert_google_drive_url_for_storage(url_str)
-            
-            df['Image Featured'] = df['Image Featured'].apply(process_image_url)
-        
-        # 🔧 Process Drawing URLs  
-        if 'Drawing' in df.columns:
-            def process_image_url(url):
-                url_str = str(url).strip()
-                if url_str == '' or url_str.lower() in ['nan', 'none', 'null']:
-                    return ""
-                return convert_google_drive_url_for_storage(url_str)
-            
-            df['Drawing'] = df['Drawing'].apply(process_image_url)
+        # 🔧 Process Image URLs (from Column B - empty header)
+        for img_col in ['Image Featured', 'Drawing']:
+            if img_col in df.columns:
+                def process_image_url(url):
+                    url_str = str(url).strip()
+                    if url_str == '' or url_str.lower() in ['nan', 'none', 'null']:
+                        return ""
+                    return convert_google_drive_url_for_storage(url_str)
+                df[img_col] = df[img_col].apply(process_image_url)
         
         # 🔧 Clean SKU column
         if 'SKU' in df.columns:
@@ -483,26 +509,14 @@ def get_sheet_data(_sheet):
                 if val_str == '' or val_str.lower() in ['nan', 'none', 'null']:
                     return ''
                 return val_str
-            
             df['SKU'] = df['SKU'].apply(clean_sku)
         
-        # 🔧 Clean other text columns
-        for col in ['Size (mm)', 'Color', 'Content']:
-            if col in df.columns:
-                def clean_text(val):
-                    val_str = str(val).strip()
-                    if val_str == '' or val_str.lower() in ['nan', 'none', 'null']:
-                        return ''
-                    return val_str
-                
-                df[col] = df[col].apply(clean_text)
-        
-        st.success(f"✅ Loaded {len(df)} products from sheet")
-        
+        st.success(f"✅ Loaded {len(df)} products from {len(_worksheets)} sheets")
+        st.write(f"📊 Columns found: {list(df.columns)}")
         return df
         
     except Exception as e:
-        st.error(f"❌ Error processing sheet: {e}")
+        st.error(f"❌ Error processing sheets: {e}")
         import traceback
         st.error(traceback.format_exc())
         return None
@@ -657,8 +671,9 @@ if st.button("🔄 Refresh Sheet Data"):
 
 @st.cache_data(ttl=300)
 def compute_product_lookups(df_hash):
-    worksheet = get_gsheet_connection()
-    df = get_sheet_data(worksheet)
+    worksheets = get_gsheet_connection()
+    df = get_sheet_data(worksheets)
+    
     if df is None or df.empty:
         st.warning("⚠️ No data loaded from sheet")
         return None
@@ -666,43 +681,46 @@ def compute_product_lookups(df_hash):
     df = df.copy()
     df['original_order'] = range(len(df))
     
-    # Create products list with UNIQUE keys (index + title)
     products = []
     price_map = {}
     desc_map = {}
     image_map = {}
     code_map = {}
     size_map = {}
-    title_to_key_map = {}  # Map: display_name -> unique_key
+    title_to_key_map = {}
     
     for idx, row in df.iterrows():
-        title = row['Title']
+        # 🔥 Use .get() with safe defaults
+        title = str(row.get('Title', '')).strip()
+        if not title or title.lower() in ['nan', 'none', 'null', '']:
+            continue
+            
         sku = str(row.get('SKU', '')).strip()
         
-        # Create UNIQUE key: combine index and title
         unique_key = f"{idx}_{title}"
         display_name = title
         
-        # If SKU exists, append it to display name for clarity
         if sku and sku not in ['', 'nan', 'NaN', 'None']:
             display_name = f"{title} ({sku})"
         
         products.append(display_name)
         title_to_key_map[display_name] = unique_key
         
-        # Store all mappings using unique key
-        price_map[display_name] = float(row.get('Unit Price', 0.0))
+        #  Use "Osama" for price with safe conversion
+        try:
+            price_map[display_name] = float(row.get('Osama', 0.0))
+        except:
+            price_map[display_name] = 0.0
         
-        desc_val = row.get('Content', '')
-        desc_map[display_name] = '' if desc_val in ['nan', 'NaN', 'None'] else str(desc_val)
-
-     
-        # Inside the loop over df rows:
-        size_val = row.get('Size (mm)', '')
-        size_map[display_name] = '' if size_val in ['nan', 'NaN', 'None', ''] else str(size_val)
+        #  Safe string handling for all fields
+        desc_val = str(row.get('Content', '')).strip()
+        desc_map[display_name] = '' if desc_val.lower() in ['nan', 'none', 'null', ''] else desc_val
         
-        image_val = row.get('Image Featured', '')
-        image_map[display_name] = '' if image_val in ['nan', 'NaN', 'None', ''] else str(image_val)
+        size_val = str(row.get('Size (mm)', '')).strip()
+        size_map[display_name] = '' if size_val.lower() in ['nan', 'none', 'null', ''] else size_val
+        
+        image_val = str(row.get('Image Featured', '')).strip()
+        image_map[display_name] = '' if image_val.lower() in ['nan', 'none', 'null', ''] else image_val
         
         # SKU mapping
         if sku and sku not in ['', 'nan', 'NaN', 'None']:
@@ -710,32 +728,34 @@ def compute_product_lookups(df_hash):
         else:
             code_map[display_name] = ''
     
-    # Create reverse code map (SKU -> display_name)
+    # Build reverse_code_map (SKU → display_name)
     reverse_code_map = {}
     for product, code in code_map.items():
-        if code and code not in reverse_code_map:  # Keep first occurrence
+        if code and code not in reverse_code_map:
             reverse_code_map[code] = product
     
-    # Create code_options list (ALL unique SKUs)
+    # Build code_options list
     code_options = []
     for product in products:
         code = code_map.get(product, '')
         if code and code not in code_options:
             code_options.append(code)
     
+    st.success(f"✅ Processed {len(products)} products with {len(code_options)} unique SKUs")
+    
     return {
-        'products': products,              # All 85 products with unique display names
+        'products': products,
         'price_map': price_map,
         'desc_map': desc_map,
         'image_map': image_map,
         'code_map': code_map,
         'reverse_code_map': reverse_code_map,
-        'code_options': code_options,      
+        'code_options': code_options,
         'size_map': size_map,
         'title_to_key_map': title_to_key_map
     }
-    
 # 🚀 Load product
+
 lookups = compute_product_lookups("v1")
 if lookups is None:
     st.error("❌ No product data loaded")
@@ -1166,8 +1186,8 @@ for idx in st.session_state.row_indices:
         st.session_state[_flag_key] = True
         sel_name = st.session_state.get(_name_key, "-- Select --")
         if sel_name != "-- Select --":
-            code_val = code_map.get(sel_name, "")
-            if pd.notna(code_val) and str(code_val).strip() not in ["", "nan"]:
+            code_val = lookups['code_map'].get(sel_name, "")  # 🔥 Use lookups directly
+            if code_val and str(code_val).strip() not in ["", "nan"]:
                 st.session_state[_code_key] = str(code_val).strip()
             else:
                 st.session_state[_code_key] = "-- Select --"
@@ -1182,8 +1202,8 @@ for idx in st.session_state.row_indices:
             return
         st.session_state[_flag_key] = True
         sel_code = st.session_state.get(_code_key, "-- Select --")
-        if sel_code != "-- Select --" and sel_code in reverse_code_map:
-            resolved_name = reverse_code_map[sel_code]
+        if sel_code != "-- Select --" and sel_code in lookups['reverse_code_map']:  # 🔥 Use lookups directly
+            resolved_name = lookups['reverse_code_map'][sel_code]
             st.session_state[_name_key] = resolved_name
             st.session_state.selected_products[_prod_key] = resolved_name
         else:
